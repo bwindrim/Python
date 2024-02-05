@@ -55,7 +55,7 @@ P = np.array([
     [1, 1, 0, 1, 0, 1, 0, 0],
     [0, 1, 1, 0, 1, 0, 1, 0],
     [0, 0, 1, 1, 0, 1, 0, 1],
-    [1, 0, 0, 1, 1, 0, 1, 0],
+    [1, 0, 0, 1, 1, 0, 1, 0]
     ])
 # parity check matrix
 H = np.array([
@@ -66,7 +66,7 @@ H = np.array([
     [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 1, 0, 1],
     [0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0],
     [0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 1],
-    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0],
+    [0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 0]
     ])
 
 def quasiCyclic16_8_encode(n):
@@ -101,9 +101,9 @@ def hamming7_4_decode(n):
         
     return unbits(d)
 
-# for n in range(16):
-#     h = hamming7_4_encode(n)
-#     print("data =", n, "codeword =", hex(h))
+for n in range(256):
+    h = quasiCyclic16_8_encode(n)
+    print("data =", n, "codeword =", hex(h))
 #     y = hamming7_4_decode(h)
 #     print("y =", y) # , " decoded =", hex(unbits(y)))
 #     
