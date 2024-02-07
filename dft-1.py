@@ -1,12 +1,18 @@
 from math import pi, sin, cos
 
+samples = 32
+fft_size = (samples >> 1) + 1
+
 # Using nested 'for' loops:
-def idft1(REX, IMX):
+def idft1(rex, imx):
     "The Inverse Discrete Fourier Transform"
-    assert len(REX) == 257
-    assert len(IMX) == 257
-    XX = [0.0]*(512) # holds the time domain signal
+    assert len(rex) == fft_size
+    assert len(imx) == fft_size
+    XX = [0.0]*(samples) # holds the time domain signal
+    REX = rex[:]
+    IMX = imx[:]
     N = len(XX) # N is the number of points in XX
+    assert N == 32
     
     # Find the cosine and sin wave amplitudes
     for k in range(len(REX)):
@@ -22,18 +28,20 @@ def idft1(REX, IMX):
     # to the "input view" and "output view".
     for i in range(N):
         for k in range(len(REX)):
-            XX[i] += REX[k]*cos(2*pi*k*i/N)
-            XX[i] += IMX[k]*sin(2*pi*k*i/N)
+            XX[i] += REX[k]*cos(2*pi*k*i/N) + IMX[k]*sin(2*pi*k*i/N)
     
     return XX
 
 # Using a 'for' loop and a list comprehension
-def idft2(REX, IMX):
+def idft2(rex, imx):
     "The Inverse Discrete Fourier Transform"
-    assert len(REX) == 257
-    assert len(IMX) == 257
-    XX = [0.0]*(512) # holds the time domain signal
+    assert len(rex) == fft_size
+    assert len(imx) == fft_size
+    XX = [0.0]*(samples) # holds the time domain signal
+    REX = rex[:]
+    IMX = imx[:]
     N = len(XX) # N is the number of points in XX
+    assert N == 32
     
     # Find the cosine and sin wave amplitudes
     for k in range(len(REX)):
@@ -50,11 +58,13 @@ def idft2(REX, IMX):
     return XX
 
 # Using nested list comprehensions
-def idft3(REX, IMX):
+def idft3(rex, imx):
     "The Inverse Discrete Fourier Transform"
-    assert len(REX) == 257
-    assert len(IMX) == 257
-    N = 512 # N is the number of points in XX
+    assert len(rex) == fft_size
+    assert len(imx) == fft_size
+    REX = rex[:]
+    IMX = imx[:]
+    N = samples # N is the number of points in XX
     
     # Find the cosine and sin wave amplitudes
     for k in range(len(REX)):
@@ -72,11 +82,13 @@ def idft3(REX, IMX):
     return XX
 
 # Using a generator nested within a list comprehension
-def idft4(REX, IMX):
+def idft4(rex, imx):
     "The Inverse Discrete Fourier Transform"
-    assert len(REX) == 257
-    assert len(IMX) == 257
-    N = 512 # N is the number of points in XX
+    assert len(rex) == fft_size
+    assert len(imx) == fft_size
+    REX = rex[:]
+    IMX = imx[:]
+    N = samples # N is the number of points in XX
     
     # Find the cosine and sin wave amplitudes
     for k in range(len(REX)):
@@ -96,9 +108,9 @@ def idft4(REX, IMX):
 # Using nested 'for' loops:
 def dft1(XX):
     "The Discrete Fourier Transform"
-    assert len(XX) == 512
-    REX = [0.0]*(257)
-    IMX = [0.0]*(257)
+    assert len(XX) == samples
+    REX = [0.0]*(fft_size)
+    IMX = [0.0]*(fft_size)
     N = len(XX) # N is the number of points in XX
         
     # Note that the nesting of these two loops can
@@ -115,9 +127,9 @@ def dft1(XX):
 # Using a 'for' loop and list comprehensions
 def dft2(XX):
     "The Discrete Fourier Transform"
-    assert len(XX) == 512
-    REX = [0.0]*(257)
-    IMX = [0.0]*(257)
+    assert len(XX) == samples
+    REX = [0.0]*(fft_size)
+    IMX = [0.0]*(fft_size)
     N = len(XX) # N is the number of points in XX
         
     for k in range(len(REX)):
@@ -129,9 +141,9 @@ def dft2(XX):
 # Using nested list comprehensions
 def dft3(XX):
     "The Discrete Fourier Transform"
-    assert len(XX) == 512
+    assert len(XX) == samples
     N = len(XX) # N is the number of points in XX
-    K = 257
+    K = fft_size
     REX = [sum([+XX[i]*cos(2*pi*k*i/N) for i in range(N)])
            for k in range(K)]
     IMX = [sum([-XX[i]*sin(2*pi*k*i/N) for i in range(N)])
@@ -142,9 +154,9 @@ def dft3(XX):
 # Using generators nested within list comprehensions
 def dft4(XX):
     "The Discrete Fourier Transform"
-    assert len(XX) == 512
+    assert len(XX) == samples
     N = len(XX) # N is the number of points in XX
-    K = 257
+    K = fft_size
     REX = [sum(+XX[i]*cos(2*pi*k*i/N) for i in range(N))
            for k in range(K)]
     IMX = [sum(-XX[i]*sin(2*pi*k*i/N) for i in range(N))
@@ -152,28 +164,31 @@ def dft4(XX):
     
     return REX, IMX
 
-rex = [1.0]*257
-imx = [0.0]*257
+rex = [1.0]*fft_size
+imx = [0.0]*fft_size
 
 xx1 = idft1(rex, imx)
 rex1, imx1 = dft1(xx1)
+# print("rex  =", rex)
+# print("rex1 =", rex1)
+
 # assert rex1 == rex
 # assert imx1 == imx
 
 xx2 = idft2(rex, imx)
 assert xx2 == xx1
 rex2, imx2 = dft2(xx2)
-# assert rex2 == rex
-# assert imx2 == imx
+assert rex2 == rex1
+assert imx2 == imx1
 
 xx3 = idft3(rex, imx)
 assert xx3 == xx2
 rex3, imx3 = dft3(xx3)
-# assert rex3 == rex
-# assert imx3 == imx
+assert rex2 == rex1
+assert imx2 == imx1
 
 xx4 = idft4(rex, imx)
 assert xx4 == xx3
 rex4, imx4 = dft4(xx4)
-# assert rex4 == rex
-# assert imx4 == imx
+assert rex2 == rex1
+assert imx2 == imx1
