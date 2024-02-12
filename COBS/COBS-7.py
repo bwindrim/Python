@@ -212,9 +212,7 @@ def query_channel_mode(porp):
 BaudRate = 57600
 
 def run_test(dev1, dev2, test, *args):
-    success_count = 0
-    failure_count = 0
-
+    global success_count, failure_count
     with serial.Serial("/dev/tty"+dev1, BaudRate, timeout=0.5) as ser1:  # open serial port
         print("Serial port1 (src) =", ser1.name)         # print which port was really used
         with serial.Serial("/dev/tty"+dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
@@ -228,25 +226,28 @@ def run_test(dev1, dev2, test, *args):
                     success_count += good
                     failure_count += bad
 
-    print()
     print("sent      =", len(src.out_history))
     print("received  =", len(dst.in_history))
-    print("successes =", success_count)
-    print("failures  =", failure_count)
     assert not ser1.is_open # the serial port should have been automatically closed
     assert not ser2.is_open # the serial port should have been automatically closed
     return good, bad
 
+success_count = 0
+failure_count = 0
 num_modes = 12
 usb0 = {}
 usb1 = {}
-mode_list = [6, 7]
-# mode_list = range(2, num_modes, 1) 
+# mode_list = [12]
+mode_list = [i for i in range(0, num_modes, 1)]
 # mode_list = range(0, 10, 1) 
 repeats = 5
 for mode in mode_list:
     usb0[mode] = run_test("USB0", "USB1", test2, mode, repeats)
     usb1[mode] = run_test("USB1", "USB0", test2, mode, repeats)
+
+print()
+print("successes =", success_count)
+print("failures  =", failure_count)
 
 print("USB0 is src:", usb0)
 print("USB1 is src:", usb1)
