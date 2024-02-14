@@ -177,7 +177,7 @@ def test2(src, dst, channel_mode=1, limit=1):
             if resp == None:
                 print("Timeout on send")
             else:
-                assert resp == b'\x00'   # ack should be empty packet
+                assert resp == b'\x00\x01\x00'   # should be an ACK
             try:
                 packet = dst.recv_incoming()
                 data, metadata = decode_porp(packet)
