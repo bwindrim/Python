@@ -84,7 +84,7 @@ class Porp(Packetizer):
         return response
 
     def recv_incoming(self):
-        return self.incoming.get(timeout=5)
+        return self.incoming.get(timeout=15)
         
     def recv_response(self):
         return self.responses.get(timeout=1)
@@ -171,7 +171,7 @@ def test2(src, dst, channel_mode=1, limit=1):
     try:
         while limit > 0:
             limit -= 1
-            original = randbytes(randrange(1, 20))
+            original = randbytes(randrange(1, 100))
             encoded = encode_porp(original)
             resp = src.send_packet(encoded)
             if resp == None:
@@ -237,10 +237,10 @@ failure_count = 0
 num_modes = 12
 usb0 = {}
 usb1 = {}
-# mode_list = [12]
-mode_list = [i for i in range(0, num_modes, 1)]
+# mode_list = [6, 7]
+mode_list = range(0, num_modes, 2) 
 # mode_list = range(0, 10, 1) 
-repeats = 5
+repeats = 1000
 for mode in mode_list:
     usb0[mode] = run_test("USB0", "USB1", test2, mode, repeats)
     usb1[mode] = run_test("USB1", "USB0", test2, mode, repeats)
