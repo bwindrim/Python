@@ -10,7 +10,37 @@ import time
 # for reproducability.
 random.seed(0)
 
-ACK =b'\x00\x01\x00'
+ACK  = b'\x00\x01\x00'
+# NACK = b'\x00\x01\x01'
+
+# Start of command/response IDs.
+cmdGetVersionInfo = 32
+cmdTransmitCW = 33
+cmdTransmitOff = 34
+cmdAutoCalibrate = 35
+cmdGetThreshold = 36
+cmdSetThreshold = 37
+cmdGetChannelMode = 38
+cmdSetChannelMode = 39
+cmdGetRxGain = 40
+cmdSetRxGain = 41
+cmdGetControlBits = 64
+cmdSetControlBits = 65
+cmdEnableRxCodingMode = 66
+cmdQueryChannelMode = 67
+
+# Start of attribute IDs.
+attStrengths = 96
+attDetectedErrors = 97
+attCorrectedErrors = 98
+attCodingMode = 99
+
+metaString = {}
+metaString[attPacketSequenceNumber] = "PacketSequenceNumber"
+metaString[attStrengths] = "Strengths"
+metaString[attDetectedErrors] = "DetectedErrors"
+metaString[attCorrectedErrors] = "CorrectedErrors"
+metaString[attCodingMode] = "CodingMode"
 
 def encode_porp(payload):
     packet = bytearray(len(payload) + 1)
@@ -99,9 +129,9 @@ def handle_metadata(metadata):
         attr_len = metadata[0]
         attr_id = metadata[1]
         attr = metadata[2:attr_len+1]
-#         print("id =", attr_id, "attr =", attr)
+        print("id =", attr_id, "attr =", attr)
         attr_dict[attr_id] = attr
-        metadata = metadata[attr_len:]
+        metadata = metadata[attr_len+1:]
         length = len(metadata)
     return attr_dict
 
@@ -336,6 +366,9 @@ def test5(src, dst, channel_mode=1, limit=1):
                         print("*** bit errors:", data, "!=", original, "*** count =", count_bit_errors(data,original))
                     failures += 1
                 else:
+                    print("metadata =", metadata)
+                    attrs = handle_metadata(metadata)
+                    print ("attrs =", attrs)
                     successes += 1
             except queue.Empty:
                 print("*** timeout ***")
@@ -347,42 +380,42 @@ def test5(src, dst, channel_mode=1, limit=1):
 
 def auto_calibrate(porp, iterations=None):
     if iterations == None:
-        reply = porp.send_packet(encode_command(4), timeout=10)
+        reply = porp.send_packet(encode_command(cmdAutoCalibrate), timeout=10)
     else:
-        reply = porp.send_packet(encode_command(4, iterations.to_bytes(2, byteorder='little')), timeout=10)
+        reply = porp.send_packet(encode_command(cmdAutoCalibrate, iterations.to_bytes(2, byteorder='little')), timeout=10)
     print("auto_calibrate(), reply =", reply)
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
         print ("attrs =", attrs)
-    return attrs[4]
+    return attrs[cmdAutoCalibrate]
 
 def set_channel_mode(porp, channelMode):
-    reply = porp.send_packet(encode_command(6, channelMode.to_bytes(2, byteorder="little")))
-    assert reply == ACK
+    reply = porp.send_packet(encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
+    assert reply == encode_command(cmdSetChannelMode)
     return reply
 
 def get_channel_mode(porp):
-    reply = porp.send_packet(encode_command(7))
+    reply = porp.send_packet(encode_command(cmdGetChannelMode))
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
         print ("attrs =", attrs)
-    return attrs[7]
+    return attrs[cmdGetChannelMode]
 
 def query_channel_mode(porp):
-    reply = porp.send_packet(encode_command(8))
+    reply = porp.send_packet(encode_command(cmdQueryChannelMode))
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
         print ("attrs =", attrs)
-    return attrs[9]
+    return attrs[cmdQueryChannelMode]
 
 def enable_coding_mode(porp, syncMarker):
-    reply = porp.send_packet(encode_command(10, syncMarker.to_bytes(4, byteorder="little")))
-    if reply != ACK:
+    reply = porp.send_packet(encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
+    if reply != encode_command(cmdEnableRxCodingMode):
         print ("reply =", reply)
-    assert reply == ACK
+    assert reply == encode_command(cmdEnableRxCodingMode)
     return reply
     
 BaudRate = 57600
@@ -415,9 +448,10 @@ failure_count = 0
 num_modes = 12
 usb0 = {}
 usb1 = {}
-mode_list = [12, 14]
+# mode_list = [12, 14]
 # mode_list = [i for i in range(0, num_modes, 2)]
-# mode_list = range(0, 10, 1) 
+# mode_list = range(0, 10, 1)
+mode_list = [0]
 repeats = 5
 for mode in mode_list:
     usb0[mode] = run_test("USB0", "USB1", test5, mode, repeats)

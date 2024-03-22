@@ -10,7 +10,30 @@ import time
 # for reproducability.
 random.seed(0)
 
-ACK =b'\x00\x01\x00'
+ACK  = b'\x00\x01\x00'
+# NACK = b'\x00\x01\x01'
+
+# Start of command/response IDs.
+cmdGetVersionInfo = 32
+cmdTransmitCW = 33
+cmdTransmitOff = 34
+cmdAutoCalibrate = 35
+cmdGetThreshold = 36
+cmdSetThreshold = 37
+cmdGetChannelMode = 38
+cmdSetChannelMode = 39
+cmdGetRxGain = 40
+cmdSetRxGain = 41
+cmdGetControlBits = 64
+cmdSetControlBits = 65
+cmdEnableRxCodingMode = 66
+cmdQueryChannelMode = 67
+
+# Start of attribute IDs.
+attPacketSequenceNumber = 96
+attStrengths = 97
+attDetectedErrors = 98
+attCorrectedErrors = 99
 
 def encode_porp(payload):
     packet = bytearray(len(payload) + 1)
@@ -207,9 +230,9 @@ def test2(src, dst, channel_mode=1, limit=1):
 
 def auto_calibrate(porp, iterations=None):
     if iterations == None:
-        reply = porp.send_packet(encode_command(4), timeout=10)
+        reply = porp.send_packet(encode_command(cmdAutoCalibrate), timeout=10)
     else:
-        reply = porp.send_packet(encode_command(4, iterations.to_bytes(2, byteorder='little')), timeout=10)
+        reply = porp.send_packet(encode_command(cmdAutoCalibrate, iterations.to_bytes(2, byteorder='little')), timeout=10)
     print("auto_calibrate(), reply =", reply)
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
@@ -218,12 +241,12 @@ def auto_calibrate(porp, iterations=None):
     return attrs[4]
 
 def set_channel_mode(porp, channelMode):
-    reply = porp.send_packet(encode_command(6, channelMode.to_bytes(2, byteorder="little")))
+    reply = porp.send_packet(encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
     assert reply == ACK
     return reply
 
 def get_channel_mode(porp):
-    reply = porp.send_packet(encode_command(7))
+    reply = porp.send_packet(encode_command(cmdGetChannelMode))
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
@@ -231,7 +254,7 @@ def get_channel_mode(porp):
     return attrs[7]
 
 def query_channel_mode(porp):
-    reply = porp.send_packet(encode_command(8))
+    reply = porp.send_packet(encode_command(cmdQueryChannelMode))
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
@@ -239,7 +262,7 @@ def query_channel_mode(porp):
     return attrs[9]
 
 def enable_coding_mode(porp, syncMarker):
-    reply = porp.send_packet(encode_command(10, syncMarker.to_bytes(4, byteorder="little")))
+    reply = porp.send_packet(encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
     if reply != ACK:
         print ("reply =", reply)
     assert reply == ACK
@@ -249,17 +272,17 @@ def transmit_CW(porp, freq=None):
     payload = b''
     if freq != None:
         payload = int(freq*10).to_bytes(2, byteorder="little")
-    reply = porp.send_packet(encode_command(2, payload))
-    if reply != ACK:
+    reply = porp.send_packet(encode_command(cmdTransmitCW, payload))
+    if reply != encode_command(cmdTransmitCW):
         print ("reply =", reply)
-    assert reply == ACK
+    assert reply == encode_command(cmdTransmitCW)
     return reply
 
 def transmit_off(porp):
-    reply = porp.send_packet(encode_command(3))
-    if reply != ACK:
+    reply = porp.send_packet(encode_command(cmdTransmitOff))
+    if reply != encode_command(cmdTransmitOff):
         print ("reply =", reply)
-    assert reply == ACK
+    assert reply == encode_command(cmdTransmitOff)
     return reply
 
 BaudRate = 57600
@@ -288,18 +311,33 @@ def run_test(dev1, dev2, test, *args):
     return good, bad
 
 def getControlBits(porp):
-    reply = porp.send_packet(encode_command(12))
+    reply = porp.send_packet(encode_command(cmdGetControlBits))
     data, metadata = decode_porp(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
         print ("attrs =", attrs)
-    return int.from_bytes(attrs[12], byteorder="little")
+    return int.from_bytes(attrs[cmdGetControlBits], byteorder="little")
     
 def setControlBits(porp, bits):
-    reply = porp.send_packet(encode_command(13, bits.to_bytes(2, byteorder="little")))
-    if reply != ACK:
+    reply = porp.send_packet(encode_command(cmdSetControlBits, bits.to_bytes(2, byteorder="little")))
+    if reply != encode_command(cmdSetControlBits):
         print ("reply =", reply)
-    assert reply == ACK
+    assert reply == encode_command(cmdSetControlBits)
+    return reply
+    
+def getRxGain(porp):
+    reply = porp.send_packet(encode_command(cmdGetRxGain))
+    data, metadata = decode_porp(reply)
+    if len(metadata) > 0:
+        attrs = handle_metadata(metadata)
+        print ("attrs =", attrs)
+    return int.from_bytes(attrs[cmdGetRxGain], byteorder="little")
+    
+def setRxGain(porp, bits):
+    reply = porp.send_packet(encode_command(cmdSetRxGain, bits.to_bytes(2, byteorder="little")))
+    if reply != encode_command(cmdSetRxGain):
+        print ("reply =", reply)
+    assert reply == encode_command(cmdSetRxGain)
     return reply
     
 def controlTest(porp):
@@ -325,8 +363,22 @@ def controlTest(porp):
         print()
     transmit_off(porp)
         
+def gainTest(porp):
+    transmit_CW(porp)
+    controlBits = 0
+    print("getControlBits() returned", hex(getControlBits(porp)))
+    print()
+    for gain in [0, 10, 20, 30, 40, 30, 20, 10, 0]:
+        print ("gain =", gain, "dB")
+        setRxGain(porp, gain)
+        check = getRxGain(porp)
+        bits = getControlBits(porp)
+        print("getRxGain() returned", check, "dB, getControlBits() returned", hex(bits))
+        assert check == gain
+    transmit_off(porp)
+        
 with serial.Serial("/dev/ttyUSB0", BaudRate, timeout=0.5) as ser1:
     print("Serial port =", ser1.name)         # print which port was really used
     with ReaderThread(ser1, Porp) as tgt:
-        controlTest(tgt)
+        gainTest(tgt)
         
