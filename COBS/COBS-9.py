@@ -1,17 +1,17 @@
-from cobs import cobs
 import serial
-from serial.threaded import Packetizer, ReaderThread
-import queue
-from queue import Queue
+from serial.threaded import ReaderThread
 import random
 from random import randrange, randbytes
 import time
+
+import porp
+from porp import Porp
+
 # Ensure that we always generate the same "random" test data,
 # for reproducability.
 random.seed(0)
 
 ACK  = b'\x00\x01\x00'
-# NACK = b'\x00\x01\x01'
 
 # Start of command/response IDs.
 cmdGetVersionInfo = 32
@@ -47,112 +47,10 @@ metaDecode[attMinStrength]    = lambda payload : str(int.from_bytes(payload, 'li
 metaDecode[attDetectedErrors] = lambda payload : str(int.from_bytes(payload, 'little'))
 metaDecode[attCodingMode]     = lambda payload : hex(int.from_bytes(payload, 'little'))
 
-def encode_porp(payload):
-    packet = bytearray(len(payload) + 1)
-    packet[0] = len(payload)
-    packet[1:] = payload
-    return bytes(packet)
-
-def decode_porp(packet):
-    LEN = packet[0]
-    data = packet[1:LEN+1]
-    if len(data) != LEN:
-        print("len(", data, ") !=", LEN, "packet =", packet)
-    assert len(data) == LEN
-    metadata = packet[LEN+1:]
-    return data, metadata
-
-def encode_command(id, payload=b''):
-    packet = bytearray(len(payload) + 3)
-    packet[0] = 0
-    packet[1] = 1 + len(payload)
-    packet[2] = id
-    packet[3:] = payload
-#     print("command packet = ", packet)
-    return bytes(packet)
-
-
-class Porp(Packetizer):
-    """
-    Read COBS-encoded binary packets from serial port.
-    Packets are expected to be terminated with a delimiter byte (zero).
-
-    The class also keeps track of the transport.
-    """
-
-    def __init__(self):
-        super().__init__() # call the base class initialiser
-        self.out_history = []
-        self.in_history = []
-        self.incoming: Queue[bytes] = Queue()
-        self.responses: Queue[bytes] = Queue()
-
-
-    def handle_packet(self, packet):
-        """Process received packets by decoding from COBS"""
-        received = bytes(packet)            # convert from bytearray
-        decoded = cobs.decode(received)     # decode from COBS
-        if len(decoded) == 0:
-            return # discard empty packets
-        self.in_history.append(decoded)
-        # Decide which queue the packet should be sent to:
-        # If the first byte of the decoded packet is zero then...
-        if (decoded[0] == 0):
-            # ...its head segment is empty and hence doesn't contain a PORP
-            # datagram, so this must be a an ACK, NACK, or other response.
-            self.responses.put(decoded)
-        else:
-            # ...otherwise this must be an incoming Lattice datagram,
-            # possibly with attached metadata.
-            self.incoming.put(decoded)
-
-    def send_packet(self, packet, timeout=1):
-        self.original = packet                 # store for comparison
-        self.out_history.append(packet)        # store in the history list
-        self.encoded = cobs.encode(packet)     # encode to COBS
-#         print("encoded  =", self.encoded)
-        self.transport.write(self.encoded+b'\x00') # append the packet delimiter
-        try:
-            response = self.responses.get(timeout=timeout) # wait for ACK
-        except queue.Empty:
-            print("send_packet(timeout=", timeout,"), timout")
-            response = None
-#         print("response =", response)
-#         assert response == b'\x00'   # ack should be empty packet
-        return response
-
-    def recv_incoming(self, timeout=30):
-        return self.incoming.get(timeout=timeout)
-        
-    def recv_response(self, timeout=1):
-        return self.responses.get(timeout=timeout)
-        
-def handle_metadata(metadata):
-    attr_dict = {}
-    length = len(metadata)
-    while length >= 2:
-        attr_len = metadata[0]
-        attr_id = metadata[1]
-        attr = metadata[2:attr_len+1]
-        print("id =", attr_id, "attr =", attr)
-        attr_dict[attr_id] = attr
-        metadata = metadata[attr_len+1:]
-        length = len(metadata)
-    return attr_dict
-
 def print_metadata(attrs):
     for key in attrs.keys():
         print (metaString[key], "=", metaDecode[key](attrs[key]))
-# def send(packet):
-#     porp.send_packet(packet)
-#     return incoming.get(timeout=5)
 
-def count_bit_errors(A,B):
-    count = 0
-    for a, b, in zip(A, B):
-        count += (a ^ b).bit_count()
-        
-    return count
 
 def test1(src, dst, channel_mode=1, limit=0):
     successes = 0
@@ -165,18 +63,19 @@ def test1(src, dst, channel_mode=1, limit=0):
 
     try:
         for line in open("/usr/share/dict/words", "r"):
-            # strip any trailing newline(s) and convert text to bytes
-#             stripped = line.rstrip('\n')
+            # Strip any trailing newline(s) and convert text to bytes.
             original = bytes(line.rstrip('\n'), 'utf-8')
-            encoded = encode_porp(original)
+            encoded = porp.encode_packet(original)
             resp = src.send_packet(encoded)
             if resp == None:
                 print("Timeout on send")
             else:
-                assert resp == b'\x00'   # ack should be empty packet
-            try:
-                packet = dst.recv_incoming()
-                data, metadata = decode_porp(packet)
+                assert resp == ACK  # ack should be empty packet
+
+            packet = dst.recv_incoming()
+            
+            if packet != None:
+                data, metadata = porp.decode_packet(packet)
 
                 if data != original:
                     if len(data) != len(original):
@@ -185,9 +84,8 @@ def test1(src, dst, channel_mode=1, limit=0):
                         print("*** bit errors: received", data, "!= sent", original, "*** count =", count_bit_errors(data,original))
                     failures += 1
                 else:
-#                     print(str(data, encoding='utf-8'))
                     successes += 1
-            except queue.Empty:
+            else:
                 print("*** timeout ***")
                 failures += 1
                 
@@ -210,23 +108,23 @@ def test2(src, dst, channel_mode=1, limit=1):
     get_channel_mode(dst)
     query_channel_mode(src)
     query_channel_mode(dst)
-#     auto_calibrate(src)
-#     auto_calibrate(dst, 50)
     assert limit > 0
     
     try:
         while limit > 0:
             limit -= 1
             original = randbytes(randrange(1, 20))
-            encoded = encode_porp(original)
+            encoded = porp.encode_packet(original)
             resp = src.send_packet(encoded)
             if resp == None:
                 print("Timeout on send")
             else:
                 assert resp == ACK   # should be an ACK
-            try:
-                packet = dst.recv_incoming()
-                data, metadata = decode_porp(packet)
+
+            packet = dst.recv_incoming()
+            
+            if packet != None:
+                data, metadata = porp.decode_packet(packet)
 
                 if data != original:
                     if len(data) != len(original):
@@ -236,7 +134,7 @@ def test2(src, dst, channel_mode=1, limit=1):
                     failures += 1
                 else:
                     successes += 1
-            except queue.Empty:
+            else:
                 print("*** timeout ***")
                 failures += 1
     except KeyboardInterrupt:
@@ -255,23 +153,23 @@ def test3(src, dst, channel_mode=1, limit=1):
     get_channel_mode(dst)
     query_channel_mode(src)
     query_channel_mode(dst)
-#     auto_calibrate(src)
-#     auto_calibrate(dst, 50)
     assert limit > 0
     
     try:
         for val in [0x00, 0xFF]:
             original = bytes([val] * limit)
 #             print("original =", original)
-            encoded = encode_porp(original)
+            encoded = porp.encode_packet(original)
             resp = src.send_packet(encoded, timeout=30)
             if resp == None:
                 print("Timeout on send")
             else:
                 assert resp == ACK   # should be an ACK
-            try:
-                packet = dst.recv_incoming()
-                data, metadata = decode_porp(packet)
+
+            packet = dst.recv_incoming()
+            
+            if packet != None:
+                data, metadata = porp.decode_packet(packet)
 
                 if data != original:
                     if len(data) != len(original):
@@ -281,7 +179,7 @@ def test3(src, dst, channel_mode=1, limit=1):
                     failures += 1
                 else:
                     successes += 1
-            except queue.Empty:
+            else:
                 print("*** timeout ***")
                 failures += 1
     except KeyboardInterrupt:
@@ -300,8 +198,6 @@ def test4(src, dst, channel_mode=1, limit=1):
     get_channel_mode(dst)
     query_channel_mode(src)
     query_channel_mode(dst)
-#     auto_calibrate(src)
-#     auto_calibrate(dst, 50)
     assert limit > 0
     
     try:
@@ -309,18 +205,18 @@ def test4(src, dst, channel_mode=1, limit=1):
             array = bytearray(limit)
             array[bit//8] ^= 0x1 << (bit % 8)
             original = bytes(array)
-#             original = bytes([val] * (limit-1)) + bytes([val ^ 0x1])
-#             print("original =", original, "len =", len(original))
             print("bit", bit)
-            encoded = encode_porp(original)
+            encoded = porp.encode_packet(original)
             resp = src.send_packet(encoded, timeout=30)
             if resp == None:
                 print("Timeout on send")
             else:
                 assert resp == ACK   # should be an ACK
-            try:
-                packet = dst.recv_incoming()
-                data, metadata = decode_porp(packet)
+
+            packet = dst.recv_incoming()
+            
+            if packet != None:
+                data, metadata = porp.decode_packet(packet)
 
                 if data != original:
                     if len(data) != len(original):
@@ -330,7 +226,7 @@ def test4(src, dst, channel_mode=1, limit=1):
                     failures += 1
                 else:
                     successes += 1
-            except queue.Empty:
+            else:
                 print("*** timeout ***")
                 failures += 1
     except KeyboardInterrupt:
@@ -349,23 +245,23 @@ def test5(src, dst, channel_mode=1, limit=1):
     get_channel_mode(dst)
     query_channel_mode(src)
     query_channel_mode(dst)
-#     auto_calibrate(src)
-#     auto_calibrate(dst, 50)
     assert limit > 0
     
     try:
         while limit > 0:
             limit -= 1
             original = randbytes(10)
-            encoded = encode_porp(original)
+            encoded = porp.encode_packet(original)
             resp = src.send_packet(encoded)
             if resp == None:
                 print("Timeout on send")
             else:
                 assert resp == ACK   # should be an ACK
-            try:
-                packet = dst.recv_incoming()
-                data, metadata = decode_porp(packet)
+            
+            packet = dst.recv_incoming()
+            
+            if packet != None:
+                data, metadata = porp.decode_packet(packet)
 
                 if data != original:
                     if len(data) != len(original):
@@ -375,10 +271,10 @@ def test5(src, dst, channel_mode=1, limit=1):
                     failures += 1
                 else:
                     print("metadata =", metadata)
-                    attrs = handle_metadata(metadata)
+                    attrs = porp.handle_metadata(metadata)
                     print_metadata (attrs)
                     successes += 1
-            except queue.Empty:
+            else:
                 print("*** timeout ***")
                 failures += 1
     except KeyboardInterrupt:
@@ -388,42 +284,42 @@ def test5(src, dst, channel_mode=1, limit=1):
 
 def auto_calibrate(porp, iterations=None):
     if iterations == None:
-        reply = porp.send_packet(encode_command(cmdAutoCalibrate), timeout=10)
+        reply = porp.send_packet(porp.encode_command(cmdAutoCalibrate), timeout=10)
     else:
-        reply = porp.send_packet(encode_command(cmdAutoCalibrate, iterations.to_bytes(2, byteorder='little')), timeout=10)
+        reply = porp.send_packet(porp.encode_command(cmdAutoCalibrate, iterations.to_bytes(2, byteorder='little')), timeout=10)
     print("auto_calibrate(), reply =", reply)
-    data, metadata = decode_porp(reply)
+    data, metadata = porp.decode_packet(reply)
     if len(metadata) > 0:
         attrs = handle_metadata(metadata)
         print ("attrs =", attrs)
     return attrs[cmdAutoCalibrate]
 
-def set_channel_mode(porp, channelMode):
-    reply = porp.send_packet(encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
-    assert reply == encode_command(cmdSetChannelMode)
+def set_channel_mode(conn, channelMode):
+    reply = conn.send_packet(porp.encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
+    assert reply == porp.encode_command(cmdSetChannelMode)
     return reply
 
-def get_channel_mode(porp):
-    reply = porp.send_packet(encode_command(cmdGetChannelMode))
-    data, metadata = decode_porp(reply)
+def get_channel_mode(conn):
+    reply = conn.send_packet(porp.encode_command(cmdGetChannelMode))
+    data, metadata = porp.decode_packet(reply)
     if len(metadata) > 0:
-        attrs = handle_metadata(metadata)
+        attrs = porp.handle_metadata(metadata)
         print ("attrs =", attrs)
     return attrs[cmdGetChannelMode]
 
-def query_channel_mode(porp):
-    reply = porp.send_packet(encode_command(cmdQueryChannelMode))
-    data, metadata = decode_porp(reply)
+def query_channel_mode(conn):
+    reply = conn.send_packet(porp.encode_command(cmdQueryChannelMode))
+    data, metadata = porp.decode_packet(reply)
     if len(metadata) > 0:
-        attrs = handle_metadata(metadata)
+        attrs = porp.handle_metadata(metadata)
         print ("attrs =", attrs)
     return attrs[cmdQueryChannelMode]
 
-def enable_coding_mode(porp, syncMarker):
-    reply = porp.send_packet(encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
-    if reply != encode_command(cmdEnableRxCodingMode):
+def enable_coding_mode(conn, syncMarker):
+    reply = conn.send_packet(porp.encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
+    if reply != porp.encode_command(cmdEnableRxCodingMode):
         print ("reply =", reply)
-    assert reply == encode_command(cmdEnableRxCodingMode)
+    assert reply == porp.encode_command(cmdEnableRxCodingMode)
     return reply
     
 BaudRate = 57600
@@ -445,8 +341,6 @@ def run_test(dev1, dev2, test, *args):
 
     print("sent      =", len(src.out_history))
     print("received  =", len(dst.in_history))
-#     print("sent      =", src.out_history)
-#     print("received  =", dst.in_history)
     assert not ser1.is_open # the serial port should have been automatically closed
     assert not ser2.is_open # the serial port should have been automatically closed
     return good, bad
@@ -460,10 +354,12 @@ usb1 = {}
 mode_list = [i for i in range(0, num_modes, 2)]
 # mode_list = range(0, 10, 1)
 # mode_list = [14]
+test_list = [test1, test2, test3, test4, test5]
 repeats = 5
-for mode in mode_list:
-    usb0[mode] = run_test("USB0", "USB1", test5, mode, repeats)
-    usb1[mode] = run_test("USB1", "USB0", test5, mode, repeats)
+for test in test_list:
+    for mode in mode_list:
+        usb0[mode] = run_test("USB0", "USB1", test, mode, repeats)
+        usb1[mode] = run_test("USB1", "USB0", test, mode, repeats)
 
 print()
 print("successes =", success_count)
