@@ -325,7 +325,7 @@ def enable_coding_mode(conn, syncMarker):
 BaudRate = 57600
 
 def run_test(dev1, dev2, test, *args):
-    global success_count, failure_count
+    global success_count, failure_count # ToDo: eliminate globals
     with serial.Serial("/dev/tty"+dev1, BaudRate, timeout=0.5) as ser1:  # open serial port
         print("Serial port1 (src) =", ser1.name)         # print which port was really used
         with serial.Serial("/dev/tty"+dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
@@ -348,8 +348,6 @@ def run_test(dev1, dev2, test, *args):
 success_count = 0
 failure_count = 0
 num_modes = 12
-usb0 = {}
-usb1 = {}
 # mode_list = [12, 14]
 mode_list = [i for i in range(0, num_modes, 2)]
 # mode_list = range(0, 10, 1)
@@ -357,13 +355,15 @@ mode_list = [i for i in range(0, num_modes, 2)]
 test_list = [test1, test2, test3, test4, test5]
 repeats = 5
 for test in test_list:
+    usb0 = {}
+    usb1 = {}
     for mode in mode_list:
         usb0[mode] = run_test("USB0", "USB1", test, mode, repeats)
         usb1[mode] = run_test("USB1", "USB0", test, mode, repeats)
+    print("USB0 is src:", usb0)
+    print("USB1 is src:", usb1)
 
 print()
-print("successes =", success_count)
-print("failures  =", failure_count)
+print("Successes:", success_count)
+print("Failures :", failure_count)
 
-print("USB0 is src:", usb0)
-print("USB1 is src:", usb1)
