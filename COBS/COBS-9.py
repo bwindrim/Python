@@ -3,6 +3,7 @@ from serial.threaded import ReaderThread
 import random
 from random import randrange, randbytes
 import time
+import sys
 
 import porp
 from porp import Porp
@@ -51,6 +52,12 @@ def print_metadata(attrs):
     for key in attrs.keys():
         print (metaString[key], "=", metaDecode[key](attrs[key]))
 
+def count_bit_errors(A,B):
+    count = 0
+    for a, b, in zip(A, B):
+        count += (a ^ b).bit_count()
+        
+    return count
 
 def test1(src, dst, channel_mode=1, limit=0):
     successes = 0
@@ -326,9 +333,9 @@ BaudRate = 57600
 
 def run_test(dev1, dev2, test, *args):
     global success_count, failure_count # ToDo: eliminate globals
-    with serial.Serial("/dev/tty"+dev1, BaudRate, timeout=0.5) as ser1:  # open serial port
+    with serial.Serial(dev1, BaudRate, timeout=0.5) as ser1:  # open serial port
         print("Serial port1 (src) =", ser1.name)         # print which port was really used
-        with serial.Serial("/dev/tty"+dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
+        with serial.Serial(dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
             print("Serial port2 (dst) =", ser2.name)         # print which port was really used
 
             with ReaderThread(ser1, Porp) as src:  # reader thread to handle incoming packets
@@ -348,8 +355,8 @@ def run_test(dev1, dev2, test, *args):
 success_count = 0
 failure_count = 0
 num_modes = 12
-# mode_list = [12, 14]
-mode_list = [i for i in range(0, num_modes, 2)]
+mode_list = [12, 14]
+# mode_list = [i for i in range(0, num_modes, 2)]
 # mode_list = range(0, 10, 1)
 # mode_list = [14]
 test_list = [test1, test2, test3, test4, test5]
@@ -358,8 +365,8 @@ for test in test_list:
     usb0 = {}
     usb1 = {}
     for mode in mode_list:
-        usb0[mode] = run_test("USB0", "USB1", test, mode, repeats)
-        usb1[mode] = run_test("USB1", "USB0", test, mode, repeats)
+        usb0[mode] = run_test(sys.argv[1], sys.argv[2], test, mode, repeats)
+        usb1[mode] = run_test(sys.argv[2], sys.argv[1], test, mode, repeats)
     print("USB0 is src:", usb0)
     print("USB1 is src:", usb1)
 

@@ -1,6 +1,5 @@
 import serial
 from cobs import cobs
-import serial
 from serial.threaded import Packetizer
 import queue
 from queue import Queue
@@ -70,11 +69,9 @@ class Porp(Packetizer):
         self.encoded = cobs.encode(packet)     # encode to COBS
 #         print("encoded  =", self.encoded)
         self.transport.write(self.encoded+b'\x00') # append the packet delimiter
-        try:
-            response = self.responses.get(timeout=timeout) # wait for ACK
-        except queue.Empty:
+        response = self.recv_response(timeout=timeout) # wait for ACK
+        if response == None:
             print("send_packet(timeout=", timeout,"), timout")
-            response = None
 #         print("response =", response)
 #         assert response == b'\x00'   # ack should be empty packet
         return response
@@ -108,9 +105,3 @@ def handle_metadata(metadata):
         length = len(metadata)
     return attr_dict
 
-def count_bit_errors(A,B):
-    count = 0
-    for a, b, in zip(A, B):
-        count += (a ^ b).bit_count()
-        
-    return count
