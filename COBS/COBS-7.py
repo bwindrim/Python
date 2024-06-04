@@ -6,6 +6,8 @@ from queue import Queue
 import random
 from random import randrange, randbytes
 import time
+import sys
+
 # Ensure that we always generate the same "random" test data,
 # for reproducability.
 random.seed(0)
@@ -443,9 +445,9 @@ BaudRate = 57600
 
 def run_test(dev1, dev2, test, *args):
     global success_count, failure_count
-    with serial.Serial("/dev/tty"+dev1, BaudRate, timeout=0.5) as ser1:  # open serial port
+    with serial.Serial(dev1, BaudRate, timeout=0.5) as ser1:  # open serial port
         print("Serial port1 (src) =", ser1.name)         # print which port was really used
-        with serial.Serial("/dev/tty"+dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
+        with serial.Serial(dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
             print("Serial port2 (dst) =", ser2.name)         # print which port was really used
 
             with ReaderThread(ser1, Porp) as src:  # reader thread to handle incoming packets
@@ -478,8 +480,8 @@ mode_list = [i for i in range(0, num_modes, 2)]
 # mode_list = [1]
 repeats = 5
 for mode in mode_list:
-    usb0[mode] = run_test("USB0", "USB1", test5, mode, repeats)
-    usb1[mode] = run_test("USB1", "USB0", test5, mode, repeats)
+    usb0[mode] = run_test(sys.argv[1], sys.argv[2], test5, mode, repeats)
+    usb1[mode] = run_test(sys.argv[2], sys.argv[1], test5, mode, repeats)
 
 print()
 print("successes =", success_count)
