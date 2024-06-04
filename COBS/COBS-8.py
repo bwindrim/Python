@@ -376,9 +376,14 @@ def gainTest(porp):
         print("getRxGain() returned", check, "dB, getControlBits() returned", hex(bits))
         assert check == gain
     transmit_off(porp)
-        
+
+def packetTest(porp):
+    original = randbytes(randrange(1, 20))
+    encoded = encode_porp(original)
+    resp = porp.send_packet(encoded)
+
 with serial.Serial("/dev/ttyUSB0", BaudRate, timeout=0.5) as ser1:
     print("Serial port =", ser1.name)         # print which port was really used
     with ReaderThread(ser1, Porp) as tgt:
-        gainTest(tgt)
+        packetTest(tgt)
         

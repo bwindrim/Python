@@ -1,4 +1,4 @@
-import serial
+# import serial
 from cobs import cobs
 from serial.threaded import Packetizer
 import queue

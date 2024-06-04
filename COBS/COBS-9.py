@@ -29,6 +29,8 @@ cmdGetControlBits = 64
 cmdSetControlBits = 65
 cmdEnableRxCodingMode = 66
 cmdQueryChannelMode = 67
+cmdGetRxVariance = 68
+cmdSetRxScaling = 69
 
 # Start of attribute IDs.
 attAvgStrength = 96
@@ -37,8 +39,8 @@ attDetectedErrors = 98
 attCodingMode = 99
 
 metaString = {}
-metaString[attAvgStrength] = "Average bit strength"
-metaString[attMinStrength] = "Minimum bit strength"
+metaString[attAvgStrength] = "Average bit strength (%)"
+metaString[attMinStrength] = "Minimum bit strength (%)"
 metaString[attDetectedErrors] = "Num detected errors"
 metaString[attCodingMode] = "Coding mode"
 
@@ -58,6 +60,76 @@ def count_bit_errors(A,B):
         count += (a ^ b).bit_count()
         
     return count
+
+def auto_calibrate(porp, iterations=None):
+    if iterations == None:
+        reply = porp.send_packet(porp.encode_command(cmdAutoCalibrate), timeout=10)
+    else:
+        reply = porp.send_packet(porp.encode_command(cmdAutoCalibrate, iterations.to_bytes(2, byteorder='little')), timeout=10)
+    print("auto_calibrate(), reply =", reply)
+    data, metadata = porp.decode_packet(reply)
+    if len(metadata) > 0:
+        attrs = handle_metadata(metadata)
+        print ("attrs =", attrs)
+    return attrs[cmdAutoCalibrate]
+
+def set_channel_mode(conn, channelMode):
+    reply = conn.send_packet(porp.encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
+    assert reply == porp.encode_command(cmdSetChannelMode)
+    return reply
+
+def get_channel_mode(conn):
+    reply = conn.send_packet(porp.encode_command(cmdGetChannelMode))
+    data, metadata = porp.decode_packet(reply)
+    if len(metadata) > 0:
+        attrs = porp.handle_metadata(metadata)
+        print ("attrs =", attrs)
+    return attrs[cmdGetChannelMode]
+
+def query_channel_mode(conn):
+    reply = conn.send_packet(porp.encode_command(cmdQueryChannelMode))
+    data, metadata = porp.decode_packet(reply)
+    if len(metadata) > 0:
+        attrs = porp.handle_metadata(metadata)
+        print ("attrs =", attrs)
+    return attrs[cmdQueryChannelMode]
+
+def enable_coding_mode(conn, syncMarker):
+    reply = conn.send_packet(porp.encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
+    if reply != porp.encode_command(cmdEnableRxCodingMode):
+        print ("reply =", reply)
+    assert reply == porp.encode_command(cmdEnableRxCodingMode)
+    return reply
+    
+def set_rx_scaling(conn, scaling=0):
+    reply = conn.send_packet(porp.encode_command(cmdSetRxScaling, scaling.to_bytes(2, byteorder="little")))
+    assert reply == porp.encode_command(cmdSetRxScaling)
+    return reply
+
+def get_variance(conn):
+    reply = conn.send_packet(porp.encode_command(cmdGetRxVariance))
+    data, metadata = porp.decode_packet(reply)
+    if len(metadata) > 0:
+        attrs = porp.handle_metadata(metadata)
+    # Map variance from 0..0xFFFF range to 0..1
+    return float(int.from_bytes(attrs[cmdGetRxVariance], 'little'))/float(0xFFFF)
+
+def transmit_CW(conn, freq=None):
+    payload = b''
+    if freq != None:
+        payload = int(freq*10).to_bytes(2, byteorder="little")
+    reply = conn.send_packet(porp.encode_command(cmdTransmitCW, payload))
+    if reply != porp.encode_command(cmdTransmitCW):
+        print ("reply =", reply)
+    assert reply == porp.encode_command(cmdTransmitCW)
+    return reply
+
+def transmit_off(conn):
+    reply = conn.send_packet(porp.encode_command(cmdTransmitOff))
+    if reply != porp.encode_command(cmdTransmitOff):
+        print ("reply =", reply)
+    assert reply == porp.encode_command(cmdTransmitOff)
+    return reply
 
 def test1(src, dst, channel_mode=1, limit=0):
     successes = 0
@@ -289,45 +361,19 @@ def test5(src, dst, channel_mode=1, limit=1):
     
     return successes, failures
 
-def auto_calibrate(porp, iterations=None):
-    if iterations == None:
-        reply = porp.send_packet(porp.encode_command(cmdAutoCalibrate), timeout=10)
-    else:
-        reply = porp.send_packet(porp.encode_command(cmdAutoCalibrate, iterations.to_bytes(2, byteorder='little')), timeout=10)
-    print("auto_calibrate(), reply =", reply)
-    data, metadata = porp.decode_packet(reply)
-    if len(metadata) > 0:
-        attrs = handle_metadata(metadata)
-        print ("attrs =", attrs)
-    return attrs[cmdAutoCalibrate]
-
-def set_channel_mode(conn, channelMode):
-    reply = conn.send_packet(porp.encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
-    assert reply == porp.encode_command(cmdSetChannelMode)
-    return reply
-
-def get_channel_mode(conn):
-    reply = conn.send_packet(porp.encode_command(cmdGetChannelMode))
-    data, metadata = porp.decode_packet(reply)
-    if len(metadata) > 0:
-        attrs = porp.handle_metadata(metadata)
-        print ("attrs =", attrs)
-    return attrs[cmdGetChannelMode]
-
-def query_channel_mode(conn):
-    reply = conn.send_packet(porp.encode_command(cmdQueryChannelMode))
-    data, metadata = porp.decode_packet(reply)
-    if len(metadata) > 0:
-        attrs = porp.handle_metadata(metadata)
-        print ("attrs =", attrs)
-    return attrs[cmdQueryChannelMode]
-
-def enable_coding_mode(conn, syncMarker):
-    reply = conn.send_packet(porp.encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
-    if reply != porp.encode_command(cmdEnableRxCodingMode):
-        print ("reply =", reply)
-    assert reply == porp.encode_command(cmdEnableRxCodingMode)
-    return reply
+def test_variance(src, dst, channel_mode=1, limit=1):
+    try:
+        variance = get_variance(dst)
+        print("variance (CW off) =", variance)
+        transmit_CW(src)
+        time.sleep(1.0)
+        variance = get_variance(dst)
+        transmit_off(src)
+        print("variance (CW on) =", variance)
+    except KeyboardInterrupt:
+        pass
+    
+    return 0, 0
     
 BaudRate = 57600
 
@@ -338,11 +384,14 @@ def run_test(dev1, dev2, test, *args):
         with serial.Serial(dev2, BaudRate, timeout=0.5) as ser2:  # open serial port
             print("Serial port2 (dst) =", ser2.name)         # print which port was really used
 
-            with ReaderThread(ser1, Porp) as src:  # reader thread to handle incoming packets
-                with ReaderThread(ser2, Porp) as dst:  # reader thread to handle incoming packets
+            with ReaderThread(ser1, Porp) as src:  # reader thread to handle incoming packets from src
+                with ReaderThread(ser2, Porp) as dst:  # reader thread to handle incoming packets from dst
                     start_time = time.time()
+                    enable_coding_mode(src, 0x1ACFFC1D)
+                    enable_coding_mode(dst, 0x1ACFFC1D)
+                    set_rx_scaling(dst) # switch to binary quantisation for testing (direct wired)
                     good, bad =  test(src, dst, *args) # pass the trailing arguments to the test function
-                    print("--- %s seconds ---" % (time.time() - start_time))
+                    print("--- %.1s seconds ---" % (time.time() - start_time))
                     success_count += good
                     failure_count += bad
 
@@ -355,11 +404,12 @@ def run_test(dev1, dev2, test, *args):
 success_count = 0
 failure_count = 0
 num_modes = 12
-mode_list = [12, 14]
+# mode_list = [12, 14]
 # mode_list = [i for i in range(0, num_modes, 2)]
-# mode_list = range(0, 10, 1)
-# mode_list = [14]
-test_list = [test1, test2, test3, test4, test5]
+mode_list = range(0, 10, 2)
+# mode_list = [0]
+# test_list = [test1, test2, test3, test4, test5]
+test_list = [test_variance]
 repeats = 5
 for test in test_list:
     usb0 = {}

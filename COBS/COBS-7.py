@@ -28,24 +28,29 @@ cmdGetControlBits = 64
 cmdSetControlBits = 65
 cmdEnableRxCodingMode = 66
 cmdQueryChannelMode = 67
+cmdGetRxVariance = 68
+cmdSetRxScaling = 69
 
 # Start of attribute IDs.
 attAvgStrength = 96
 attMinStrength = 97
 attDetectedErrors = 98
 attCodingMode = 99
+attVariance = 100
 
 metaString = {}
 metaString[attAvgStrength] = "Average bit strength"
 metaString[attMinStrength] = "Minimum bit strength"
 metaString[attDetectedErrors] = "Num detected errors"
 metaString[attCodingMode] = "Coding mode"
+metaString[attVariance] = "Variance"
 
 metaDecode = {}
 metaDecode[attAvgStrength]    = lambda payload : str(int.from_bytes(payload, 'little'))
 metaDecode[attMinStrength]    = lambda payload : str(int.from_bytes(payload, 'little'))
 metaDecode[attDetectedErrors] = lambda payload : str(int.from_bytes(payload, 'little'))
 metaDecode[attCodingMode]     = lambda payload : hex(int.from_bytes(payload, 'little'))
+metaDecode[attVariance]       = lambda payload : str(float(int.from_bytes(payload, 'little'))/float(0xFFFF))
 
 def encode_porp(payload):
     packet = bytearray(len(payload) + 1)
@@ -342,7 +347,8 @@ def test5(src, dst, channel_mode=1, limit=1):
     successes = 0
     failures = 0
     print("test2: channel mode is", channel_mode)
-#     enable_coding_mode(src, 0x1ACFFC1D)
+    enable_coding_mode(src, 0x1ACFFC1D)
+    enable_coding_mode(dst, 0x1ACFFC1D)
     set_channel_mode(src, channel_mode)
     set_channel_mode(dst, channel_mode)
     get_channel_mode(src)
@@ -423,9 +429,16 @@ def enable_coding_mode(porp, syncMarker):
     reply = porp.send_packet(encode_command(cmdEnableRxCodingMode, syncMarker.to_bytes(4, byteorder="little")))
     if reply != encode_command(cmdEnableRxCodingMode):
         print ("reply =", reply)
+    else:
+        print("Enable coding mode returned success")
     assert reply == encode_command(cmdEnableRxCodingMode)
     return reply
     
+def set_scaling(porp):
+    reply = porp.send_packet(encode_command(cmdSetRxScaling))
+    assert reply == encode_command(cmdSetRxScaling)
+    return reply
+
 BaudRate = 57600
 
 def run_test(dev1, dev2, test, *args):
@@ -437,6 +450,8 @@ def run_test(dev1, dev2, test, *args):
 
             with ReaderThread(ser1, Porp) as src:  # reader thread to handle incoming packets
                 with ReaderThread(ser2, Porp) as dst:  # reader thread to handle incoming packets
+                    set_scaling(src)
+                    set_scaling(dst)
                     start_time = time.time()
                     good, bad =  test(src, dst, *args) # pass the trailing arguments to the test function
                     print("--- %s seconds ---" % (time.time() - start_time))
@@ -456,10 +471,11 @@ failure_count = 0
 num_modes = 12
 usb0 = {}
 usb1 = {}
-# mode_list = [12, 14]
+# mode_list = [14, 15]
 mode_list = [i for i in range(0, num_modes, 2)]
-# mode_list = range(0, 10, 1)
-# mode_list = [14]
+# mode_list = range(1, 11, 2)
+# mode_list = range(12)
+# mode_list = [1]
 repeats = 5
 for mode in mode_list:
     usb0[mode] = run_test("USB0", "USB1", test5, mode, repeats)
