@@ -254,7 +254,7 @@ def test2(src, dst, channel_mode=1, limit=1):
 def test3(src, dst, channel_mode=1, limit=1):
     successes = 0
     failures = 0
-    print("test2: channel mode is", channel_mode)
+    print("test3: channel mode is", channel_mode)
 #     enable_coding_mode(src, 0x1ACFFC1D)
     set_channel_mode(src, channel_mode)
     set_channel_mode(dst, channel_mode)
@@ -299,7 +299,7 @@ def test3(src, dst, channel_mode=1, limit=1):
 def test4(src, dst, channel_mode=1, limit=1):
     successes = 0
     failures = 0
-    print("test2: channel mode is", channel_mode)
+    print("test4: channel mode is", channel_mode)
 #     enable_coding_mode(src, 0x1ACFFC1D)
     set_channel_mode(src, channel_mode)
     set_channel_mode(dst, channel_mode)
@@ -348,9 +348,9 @@ def test4(src, dst, channel_mode=1, limit=1):
 def test5(src, dst, channel_mode=1, limit=1):
     successes = 0
     failures = 0
-    print("test2: channel mode is", channel_mode)
-    enable_coding_mode(src, 0x1ACFFC1D)
-    enable_coding_mode(dst, 0x1ACFFC1D)
+    print("test5: channel mode is", channel_mode)
+#    enable_coding_mode(src, 0x1ACFFC1D)
+#    enable_coding_mode(dst, 0x1ACFFC1D)
     set_channel_mode(src, channel_mode)
     set_channel_mode(dst, channel_mode)
     get_channel_mode(src)
@@ -406,6 +406,19 @@ def auto_calibrate(porp, iterations=None):
         print ("attrs =", attrs)
     return attrs[cmdAutoCalibrate]
 
+def set_rx_gain(porp, rxGain):
+    reply = porp.send_packet(encode_command(cmdSetRxGain, rxGain.to_bytes(2, byteorder="little")))
+    assert reply == encode_command(cmdSetRxGain)
+    return reply
+
+def get_rx_gain(porp):
+    reply = porp.send_packet(encode_command(cmdGetRxGain))
+    data, metadata = decode_porp(reply)
+    if len(metadata) > 0:
+        attrs = handle_metadata(metadata)
+        print ("attrs =", attrs)
+    return attrs[cmdGetRxGain]
+
 def set_channel_mode(porp, channelMode):
     reply = porp.send_packet(encode_command(cmdSetChannelMode, channelMode.to_bytes(2, byteorder="little")))
     assert reply == encode_command(cmdSetChannelMode)
@@ -436,8 +449,11 @@ def enable_coding_mode(porp, syncMarker):
     assert reply == encode_command(cmdEnableRxCodingMode)
     return reply
     
-def set_scaling(porp):
-    reply = porp.send_packet(encode_command(cmdSetRxScaling))
+def set_scaling(porp, scaling=-1):
+    if scaling < 0: # send with no argument == reset to default
+        reply = porp.send_packet(encode_command(cmdSetRxScaling))
+    else:
+        reply = porp.send_packet(encode_command(cmdSetRxScaling, scaling.to_bytes(2, byteorder="little")))
     assert reply == encode_command(cmdSetRxScaling)
     return reply
 
@@ -452,8 +468,12 @@ def run_test(dev1, dev2, test, *args):
 
             with ReaderThread(ser1, Porp) as src:  # reader thread to handle incoming packets
                 with ReaderThread(ser2, Porp) as dst:  # reader thread to handle incoming packets
-                    set_scaling(src)
-                    set_scaling(dst)
+                    set_scaling(src) # reset scaling to default
+                    set_scaling(dst) # reset scaling to default
+                    set_rx_gain(src, 40)
+                    set_rx_gain(dst, 40)
+                    enable_coding_mode(src, 0x1ACFFC1D)
+                    enable_coding_mode(dst, 0x1ACFFC1D)
                     start_time = time.time()
                     good, bad =  test(src, dst, *args) # pass the trailing arguments to the test function
                     print("--- %s seconds ---" % (time.time() - start_time))
@@ -473,8 +493,8 @@ failure_count = 0
 num_modes = 12
 usb0 = {}
 usb1 = {}
-# mode_list = [14, 15]
-mode_list = [i for i in range(0, num_modes, 2)]
+# mode_list = [12, 13, 14, 15]
+mode_list = [i for i in range(0, num_modes, 1)]
 # mode_list = range(1, 11, 2)
 # mode_list = range(12)
 # mode_list = [1]

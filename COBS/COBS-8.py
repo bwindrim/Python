@@ -6,6 +6,8 @@ from queue import Queue
 import random
 from random import randrange, randbytes
 import time
+import sys
+
 # Ensure that we always generate the same "random" test data,
 # for reproducability.
 random.seed(0)
@@ -382,7 +384,7 @@ def packetTest(porp):
     encoded = encode_porp(original)
     resp = porp.send_packet(encoded)
 
-with serial.Serial("/dev/ttyUSB0", BaudRate, timeout=0.5) as ser1:
+with serial.Serial(sys.argv[1], BaudRate, timeout=0.5) as ser1:
     print("Serial port =", ser1.name)         # print which port was really used
     with ReaderThread(ser1, Porp) as tgt:
         packetTest(tgt)
