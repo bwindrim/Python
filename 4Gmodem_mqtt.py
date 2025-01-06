@@ -26,7 +26,7 @@ def send_at_command(command=None, expected_response="OK", payload=None, timeout=
 apn = "iot.1nce.net"
 pdp_context = 1
 ssl_version = 3 # 3 == TLS 1.2
-auth_mode = 0 # no authentication
+auth_mode = 0 # 0 == no authentication
 ssl_context = 1
 client_index = 0
 ignore_local_time = True
@@ -37,6 +37,7 @@ password = "Oisl2023"
 topic = b"BWtest/topic"
 message = b"Hello, MQTT from SIMCom A7683E!"
 retained = True
+enable_SNI = True
 qos = 1
 timeout = 60
 clean_session = True
@@ -61,6 +62,7 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     print(send_at_command(f'CSSLCFG="authmode",{ssl_context},{auth_mode}')) # set authentication mode
     print(send_at_command(f'CSSLCFG="ignorelocaltime",{ssl_context},{int(ignore_local_time)}'))
     print(send_at_command(f'CSSLCFG="cacert",{ssl_context},"{ca_cert}"'))  # Use CA root certificate for HiveMQ
+    print(send_at_command(f'CSSLCFG="enableSNI",{ssl_context},{int(enable_SNI)}'))
 
     # Start MQTT session
     print("Starting MQTT...")
@@ -71,8 +73,8 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
 
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
-    print(send_at_command(f'CMQTTCONNECT={client_index},"tcp://broker.hivemq.com:8883",{timeout},{int(clean_session)}'))
-    #print(send_at_command(f'CMQTTCONNECT={client_index},"tcp://8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud:8883",{timeout},{int(clean_session)},"{username}","{password}"'))
+    #print(send_at_command(f'CMQTTCONNECT={client_index},"tcp://broker.hivemq.com:8883",{timeout},{int(clean_session)}'))
+    print(send_at_command(f'CMQTTCONNECT={client_index},"tcp://8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud:8883",{timeout},{int(clean_session)},"{username}","{password}"'))
     time.sleep(3)
 
     # Publish and be damned
