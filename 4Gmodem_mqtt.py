@@ -9,10 +9,18 @@ def send_at_command(command=None, expected_response="OK", payload=None, timeout=
     modem.write(cmd_str.encode())
     time.sleep(0.1)  # Small delay to allow modem to process
     
-    if payload:
-        modem.write(payload)
-        
     start_time = time.time()
+
+    if payload:
+        # Wait for the '>' prompt before sending data
+        # ToDo: add timeout
+        while True:
+            if modem.in_waiting > 0:
+                response = modem.read(1)
+                if b'>' == response:
+                    modem.write(payload)
+                    break
+        
     response = b""
     
     while (time.time() - start_time) < timeout:
@@ -26,7 +34,7 @@ def send_at_command(command=None, expected_response="OK", payload=None, timeout=
 apn = "iot.1nce.net"
 pdp_context = 1
 ssl_version = 3 # 3 == TLS 1.2
-auth_mode = 0 # 0 == no authentication
+auth_mode = 1 # 0 == no authentication
 ssl_context = 1
 client_index = 0
 ignore_local_time = True
@@ -35,7 +43,7 @@ use_ssl = True
 username = "oisl_brian"
 password = "Oisl2023"
 topic = b"BWtest/topic"
-message = b"Hello, MQTT from SIMCom A7683E!"
+message = b"Hi there, MQTT from SIMCom A7683E!"
 retained = True
 enable_SNI = True
 qos = 1
