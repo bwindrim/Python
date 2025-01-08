@@ -52,9 +52,9 @@ def MQTTStart(apn):
         apn (str): The Access Point Name for the PDP context.
     """
     context_num = 1
-    print(send_at_command(f'CGDCONT=1,"IP","{apn}"'))  # Configure PDP context
+    print(send_at_command(f'CGDCONT=1,"IP","{apn}"')) # Configure PDP context
     print(send_at_command(f'CGACT=1,{context_num}'))  # Activate PDP context
-    print(send_at_command(f'CMQTTSTART'))
+    print(send_at_command(f'CMQTTSTART'))             # Start MQTT session
     time.sleep(2)
 
 def MQTTStop():
@@ -62,8 +62,8 @@ def MQTTStop():
     Stop the MQTT session by deactivating the PDP context.
     """
     context_num = 1
-    print(send_at_command(f'CMQTTSTOP'))
-    print(send_at_command(f'CGACT=0,{context_num}'))
+    print(send_at_command(f'CMQTTSTOP'))             # Stop MQTT session
+    print(send_at_command(f'CGACT=0,{context_num}')) # Deactivate PDP context
 
 
 class MQTTClient:
@@ -108,13 +108,12 @@ class MQTTClient:
             auth_mode = ssl_params['auth_mode']
             ignore_local_time = ssl_params['ignore_local_time']
             enable_SNI = ssl_params['enable_SNI']
-            print(send_at_command(f'CSSLCFG="sslversion",{self.ssl_context},{ssl_version}')) # set SSL version to All
-            print(send_at_command(f'CSSLCFG="authmode",{self.ssl_context},{auth_mode}')) # set authentication mode
+            print(send_at_command(f'CSSLCFG="sslversion",{self.ssl_context},{ssl_version}'))    # set SSL version
+            print(send_at_command(f'CSSLCFG="authmode",{self.ssl_context},{auth_mode}'))        # set authentication mode
             print(send_at_command(f'CSSLCFG="ignorelocaltime",{self.ssl_context},{int(ignore_local_time)}'))
-            print(send_at_command(f'CSSLCFG="cacert",{self.ssl_context},"{ca_cert}"'))  # Use CA root certificate for HiveMQ
-            print(send_at_command(f'CSSLCFG="enableSNI",{self.ssl_context},{int(enable_SNI)}'))
-
-            print(send_at_command(f'CMQTTSSLCFG={self.client_index},{self.ssl_context}'))
+            print(send_at_command(f'CSSLCFG="cacert",{self.ssl_context},"{ca_cert}"'))          # Set CA root certificate
+            print(send_at_command(f'CSSLCFG="enableSNI",{self.ssl_context},{int(enable_SNI)}')) # Set Server Name Indication
+            print(send_at_command(f'CMQTTSSLCFG={self.client_index},{self.ssl_context}'))       # Set SSL context for MQTT
 
     def connect(self, clean_session = True, timeout = 60): # ToDO: default timeout should be 0
         """
