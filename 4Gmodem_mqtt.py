@@ -78,7 +78,7 @@ def mqtt_client_connect(client, url, port = 1883, timeout = 60, clean_session = 
             credentials = f',"{username}"'
     else:
         credentials = ''
-    print(send_at_command(f'CMQTTCONNECT={client},"{url}:{port}",{timeout},{int(clean_session)}{credentials}'))
+    print(send_at_command(f'CMQTTCONNECT={client},"tcp://{url}:{port}",{timeout},{int(clean_session)}{credentials}'))
     time.sleep(3)
 
 def mqtt_client_disconnect(client):
@@ -115,7 +115,7 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
 
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
-    mqtt_client_connect(client, "tcp://8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, username = "oisl_brian", password = "Oisl2023")
+    mqtt_client_connect(client, "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, username = "oisl_brian", password = "Oisl2023")
     
     # Publish and be damned
     mqtt_publish(client, b"BWtest/topic", b"Hi there, MQTT from SIMCom A7683E!", 1, retained=True)
