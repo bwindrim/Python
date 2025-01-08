@@ -40,15 +40,6 @@ def PDPOpen(apn):
 def PDPClose(context_num):
     print(send_at_command(f'CGACT=0,{context_num}'))
 
-def SSLConfig(ca_cert, ssl_version = 4, auth_mode = 0, ignore_local_time = True, enable_SNI = False):
-    ssl_context = 1
-    print(send_at_command(f'CSSLCFG="sslversion",{ssl_context},{ssl_version}')) # set SSL version to All
-    print(send_at_command(f'CSSLCFG="authmode",{ssl_context},{auth_mode}')) # set authentication mode
-    print(send_at_command(f'CSSLCFG="ignorelocaltime",{ssl_context},{int(ignore_local_time)}'))
-    print(send_at_command(f'CSSLCFG="cacert",{ssl_context},"{ca_cert}"'))  # Use CA root certificate for HiveMQ
-    print(send_at_command(f'CSSLCFG="enableSNI",{ssl_context},{int(enable_SNI)}'))
-    return ssl_context
-
 def MQTTStart():
     print(send_at_command(f'CMQTTSTART'))
     time.sleep(2)
@@ -77,8 +68,19 @@ class MQTTClient:
         self.client_index = 0
         print(send_at_command(f'CMQTTACCQ={self.client_index},"{self.client_id}",{int(ssl)}'))
         if ssl:
-            ssl_context = ssl_params['ssl_context']
-            print(send_at_command(f'CMQTTSSLCFG={self.client_index},{ssl_context}'))
+            self.ssl_context = 1 # ToDo: just use client_index?
+            ca_cert = ssl_params['ca_cert']
+            ssl_version = ssl_params['ssl_version']
+            auth_mode = ssl_params['auth_mode']
+            ignore_local_time = ssl_params['ignore_local_time']
+            enable_SNI = ssl_params['enable_SNI']
+            print(send_at_command(f'CSSLCFG="sslversion",{self.ssl_context},{ssl_version}')) # set SSL version to All
+            print(send_at_command(f'CSSLCFG="authmode",{self.ssl_context},{auth_mode}')) # set authentication mode
+            print(send_at_command(f'CSSLCFG="ignorelocaltime",{self.ssl_context},{int(ignore_local_time)}'))
+            print(send_at_command(f'CSSLCFG="cacert",{self.ssl_context},"{ca_cert}"'))  # Use CA root certificate for HiveMQ
+            print(send_at_command(f'CSSLCFG="enableSNI",{self.ssl_context},{int(enable_SNI)}'))
+
+            print(send_at_command(f'CMQTTSSLCFG={self.client_index},{self.ssl_context}'))
         #print(send_at_command(f'CMQTTWILL={self.client_index},"BWtest/topic",1,1,"Goodbye, cruel world!"'))  # Set last will and testament
 
     def connect(self, clean_session = True, timeout = 60):
@@ -120,15 +122,12 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     print("Checking IP address...")
     print(send_at_command(f'CGPADDR={pdp_context}'))
 
-    # Configure TLS/SSL
-    print("Configuring MQTT over TLS/SSL...")
-    ssl_context = SSLConfig("isrgrootx1.pem", ssl_version=3, auth_mode=1, ignore_local_time=True, enable_SNI=True)
-
     # Start MQTT session
     print("Starting MQTT...")
     MQTTStart()
 
-    client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params={'ssl_context': ssl_context})
+    ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
+    client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
 
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
