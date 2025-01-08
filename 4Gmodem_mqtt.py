@@ -60,37 +60,40 @@ def MQTTSetVerbosity(level):
     print(send_at_command(f'CMEE={level}'))  # Enable verbose error messages
 
 class MQTTClient:
-    def __init__(self, client_id, server, port = 1883): #, port, baudrate=115200, timeout=1):
-        self.port = port
+    def __init__(self, client_id, server, port = 1883, user=None, password=None, keepalive=0, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
         #self.baudrate = baudrate
         #self.timeout = timeout
         #self.serial = serial.Serial(port, baudrate, timeout=timeout)
         #self.mqtt_configured = False
         self.client_id = client_id
         self.server_url = server
-        self.client_index = None
-
-    def open(self, ssl_context = None):
+        self.port = port
+        self.user = user
+        self.password = password
+        self.keepalive = keepalive
+        self.ssl_params = ssl_params
         self.client_index = 0
-        use_ssl =  (ssl_context != None)
-        print(send_at_command(f'CMQTTACCQ={self.client_index},"{self.client_id}",{int(use_ssl)}'))
-        if use_ssl:
+        print(send_at_command(f'CMQTTACCQ={self.client_index},"{self.client_id}",{int(ssl)}'))
+        if ssl:
+            ssl_context = ssl_params['ssl_context']
             print(send_at_command(f'CMQTTSSLCFG={self.client_index},{ssl_context}'))
+
 
     def close(self):
         print(send_at_command(f'CMQTTREL={self.client_index}'))  # release the client
 
-    def connect(self, timeout = 60, clean_session = True, username = None, password = None):
-        if username:
-            if password:
-                credentials = f',"{username}","{password}"'
+    def connect(self, clean_session = True, timeout = 60):
+        if self.user:
+            if self.password:
+                credentials = f',"{self.user}","{self.password}"'
             else:
-                credentials = f',"{username}"'
+                credentials = f',"{self.user}"'
         else:
             credentials = ''
         print(send_at_command(f'CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{timeout},{int(clean_session)}{credentials}'))
         time.sleep(3)
-
+        return False # ToDO: return true if connected to a persistent session?
+    
     def disconnect(self):
         print(send_at_command(f'CMQTTDISC={self.client_index}')) # disconnect from the broker
 
@@ -121,13 +124,11 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     print("Starting MQTT...")
     MQTTStart()
 
-    client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883)
-
-    client.open(ssl_context)
+    client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params={'ssl_context': ssl_context})
 
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
-    client.connect(username = "oisl_brian", password = "Oisl2023")
+    client.connect()
     
     # Publish and be damned
     client.publish(b"BWtest/topic", b"Hi there, MQTT from SIMCom A7683E!", 1, retained=True)
