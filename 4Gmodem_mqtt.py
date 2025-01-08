@@ -60,25 +60,27 @@ def MQTTSetVerbosity(level):
     print(send_at_command(f'CMEE={level}'))  # Enable verbose error messages
 
 class MQTTClient:
-    def __init__(self): #, port, baudrate=115200, timeout=1):
-        #self.port = port
+    def __init__(self, client_id, server, port = 1883): #, port, baudrate=115200, timeout=1):
+        self.port = port
         #self.baudrate = baudrate
         #self.timeout = timeout
         #self.serial = serial.Serial(port, baudrate, timeout=timeout)
         #self.mqtt_configured = False
+        self.client_id = client_id
+        self.server_url = server
         self.client_index = None
 
-    def open(self, client_id, ssl_context = None):
+    def open(self, ssl_context = None):
         self.client_index = 0
         use_ssl =  (ssl_context != None)
-        print(send_at_command(f'CMQTTACCQ={self.client_index},"{client_id}",{int(use_ssl)}'))
+        print(send_at_command(f'CMQTTACCQ={self.client_index},"{self.client_id}",{int(use_ssl)}'))
         if use_ssl:
             print(send_at_command(f'CMQTTSSLCFG={self.client_index},{ssl_context}'))
 
     def close(self):
         print(send_at_command(f'CMQTTREL={self.client_index}'))  # release the client
 
-    def connect(self, url, port = 1883, timeout = 60, clean_session = True, username = None, password = None):
+    def connect(self, timeout = 60, clean_session = True, username = None, password = None):
         if username:
             if password:
                 credentials = f',"{username}","{password}"'
@@ -86,7 +88,7 @@ class MQTTClient:
                 credentials = f',"{username}"'
         else:
             credentials = ''
-        print(send_at_command(f'CMQTTCONNECT={self.client_index},"tcp://{url}:{port}",{timeout},{int(clean_session)}{credentials}'))
+        print(send_at_command(f'CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{timeout},{int(clean_session)}{credentials}'))
         time.sleep(3)
 
     def disconnect(self):
@@ -119,13 +121,13 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     print("Starting MQTT...")
     MQTTStart()
 
-    client = MQTTClient()
+    client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883)
 
-    client.open("BWtestClient0", ssl_context)
+    client.open(ssl_context)
 
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
-    client.connect("8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, username = "oisl_brian", password = "Oisl2023")
+    client.connect(username = "oisl_brian", password = "Oisl2023")
     
     # Publish and be damned
     client.publish(b"BWtest/topic", b"Hi there, MQTT from SIMCom A7683E!", 1, retained=True)
