@@ -47,9 +47,6 @@ def MQTTStart():
 def MQTTStop():
     print(send_at_command(f'CMQTTSTOP'))
 
-def MQTTSetVerbosity(level):
-    print(send_at_command(f'CMEE={level}'))  # Enable verbose error messages
-
 class MQTTClient:
     def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=0, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
         #self.baudrate = baudrate
@@ -112,7 +109,6 @@ class MQTTClient:
 with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     # Initialize the modem
     print("Initializing modem...")
-    MQTTSetVerbosity(2)
     
     # Configure and activate PDP context
     print("Configuring PDP context...")
