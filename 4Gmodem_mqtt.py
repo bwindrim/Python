@@ -60,14 +60,16 @@ def MQTTSetVerbosity(level):
     print(send_at_command(f'CMEE={level}'))  # Enable verbose error messages
 
 class MQTTClient:
-    def __init__(self, client_id, server, port = 1883, user=None, password=None, keepalive=0, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
+    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=0, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
         #self.baudrate = baudrate
         #self.timeout = timeout
         #self.serial = serial.Serial(port, baudrate, timeout=timeout)
-        #self.mqtt_configured = False
         self.client_id = client_id
         self.server_url = server
-        self.port = port
+        if port == 0:
+            self.port = 8883 if ssl else 1883
+        else:
+            self.port = port
         self.user = user
         self.password = password
         self.keepalive = keepalive
@@ -77,10 +79,11 @@ class MQTTClient:
         if ssl:
             ssl_context = ssl_params['ssl_context']
             print(send_at_command(f'CMQTTSSLCFG={self.client_index},{ssl_context}'))
-
+        #print(send_at_command(f'CMQTTWILL={self.client_index},"BWtest/topic",1,1,"Goodbye, cruel world!"'))  # Set last will and testament
 
     def close(self):
         print(send_at_command(f'CMQTTREL={self.client_index}'))  # release the client
+        self.client_index = None
 
     def connect(self, clean_session = True, timeout = 60):
         if self.user:
@@ -90,6 +93,7 @@ class MQTTClient:
                 credentials = f',"{self.user}"'
         else:
             credentials = ''
+        self.timeout = timeout
         print(send_at_command(f'CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{timeout},{int(clean_session)}{credentials}'))
         time.sleep(3)
         return False # ToDO: return true if connected to a persistent session?
@@ -97,10 +101,10 @@ class MQTTClient:
     def disconnect(self):
         print(send_at_command(f'CMQTTDISC={self.client_index}')) # disconnect from the broker
 
-    def publish(self, topic, message, qos, retained=False, timeout=1):
-        print(send_at_command(f'CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=timeout))  # Send topic
-        print(send_at_command(f'CMQTTPAYLOAD={self.client_index},{len(message)}', payload=message, timeout=timeout))  # Send payload
-        print(send_at_command(f'CMQTTPUB={self.client_index},{qos},{timeout},{int(retained)}'))  # Publish the message
+    def publish(self, topic, msg, retain=False, qos=0):
+        print(send_at_command(f'CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=self.timeout))  # Send topic
+        print(send_at_command(f'CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg, timeout=self.timeout))  # Send payload
+        print(send_at_command(f'CMQTTPUB={self.client_index},{qos},{self.timeout},{int(retain)}'))  # Publish the message
         time.sleep(3)
 
 with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
@@ -131,7 +135,7 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     client.connect()
     
     # Publish and be damned
-    client.publish(b"BWtest/topic", b"Hi there, MQTT from SIMCom A7683E!", 1, retained=True)
+    client.publish(b"BWtest/topic", b"Hi there, MQTT from SIMCom A7683E!", retain=True)
 
     # Disconnect and stop MQTT
     client.disconnect()
