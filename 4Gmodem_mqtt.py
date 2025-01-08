@@ -81,10 +81,6 @@ class MQTTClient:
             print(send_at_command(f'CMQTTSSLCFG={self.client_index},{ssl_context}'))
         #print(send_at_command(f'CMQTTWILL={self.client_index},"BWtest/topic",1,1,"Goodbye, cruel world!"'))  # Set last will and testament
 
-    def close(self):
-        print(send_at_command(f'CMQTTREL={self.client_index}'))  # release the client
-        self.client_index = None
-
     def connect(self, clean_session = True, timeout = 60):
         if self.user:
             if self.password:
@@ -99,7 +95,11 @@ class MQTTClient:
         return False # ToDO: return true if connected to a persistent session?
     
     def disconnect(self):
-        print(send_at_command(f'CMQTTDISC={self.client_index}')) # disconnect from the broker
+        if self.client_index != None:
+            print(send_at_command(f'CMQTTDISC={self.client_index}')) # disconnect from the broker
+            print(send_at_command(f'CMQTTREL={self.client_index}'))  # release the client
+            self.client_index = None
+
 
     def publish(self, topic, msg, retain=False, qos=0):
         print(send_at_command(f'CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=self.timeout))  # Send topic
@@ -139,7 +139,6 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
 
     # Disconnect and stop MQTT
     client.disconnect()
-    client.close()
     MQTTStop()
 
     # Deactivate PDP context
