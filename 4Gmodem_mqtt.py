@@ -31,21 +31,19 @@ def send_at_command(command=None, expected_response="OK", payload=None, timeout=
     
     return response.decode()
 
-def PDPOpen(apn):
+
+def MQTTStart(apn):
     context_num = 1
     print(send_at_command(f'CGDCONT=1,"IP","{apn}"'))  # Configure PDP context
     print(send_at_command(f'CGACT=1,{context_num}'))  # Activate PDP context
-    return context_num
-
-def PDPClose(context_num):
-    print(send_at_command(f'CGACT=0,{context_num}'))
-
-def MQTTStart():
     print(send_at_command(f'CMQTTSTART'))
     time.sleep(2)
 
 def MQTTStop():
+    context_num = 1
     print(send_at_command(f'CMQTTSTOP'))
+    print(send_at_command(f'CGACT=0,{context_num}'))
+
 
 class MQTTClient:
     def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=0, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
@@ -107,20 +105,13 @@ class MQTTClient:
         time.sleep(3)
 
 with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
-    # Initialize the modem
-    print("Initializing modem...")
-    
-    # Configure and activate PDP context
-    print("Configuring PDP context...")
-    pdp_context = PDPOpen("iot.1nce.net")
+    # Start MQTT session
+    print("Starting MQTT...")
+    MQTTStart("iot.1nce.net")
 
     # Verify IP address
     print("Checking IP address...")
-    print(send_at_command(f'CGPADDR={pdp_context}'))
-
-    # Start MQTT session
-    print("Starting MQTT...")
-    MQTTStart()
+    print(send_at_command(f'CGPADDR=1'))
 
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
@@ -135,7 +126,3 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     # Disconnect and stop MQTT
     client.disconnect()
     MQTTStop()
-
-    # Deactivate PDP context
-    print("Deactivating PDP context...")
-    PDPClose(pdp_context)
