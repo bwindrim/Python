@@ -67,7 +67,7 @@ def MQTTStop():
 
 
 class MQTTClient:
-    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=0, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
+    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=60, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
         """
         Initialize the MQTT client.
 
@@ -139,7 +139,7 @@ class MQTTClient:
             print(send_at_command(f'CMQTTWILLTOPIC={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic, timeout=self.timeout))  # Send topic
             print(send_at_command(f'CMQTTWILLMSG={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg, timeout=self.timeout))  # Send payload
 
-        print(send_at_command(f'CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{timeout},{int(clean_session)}{credentials}'))
+        print(send_at_command(f'CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}', timeout=self.timeout))
         time.sleep(3)
         return False # ToDO: return true if connected to a persistent session?
     
@@ -152,7 +152,7 @@ class MQTTClient:
             print(send_at_command(f'CMQTTREL={self.client_index}'))  # release the client
             self.client_index = None
 
-    def set_last_will(self, topic, msg, retain=False, qos=0): # Note: retain is not supported by SimCOMM A76xx for last will
+    def set_last_will(self, topic, msg, retain=False, qos=0):
         """
         Set the last will message to be sent by the broker when the client disconnects unexpectedly.
 
@@ -164,6 +164,7 @@ class MQTTClient:
         """
         assert 0 <= qos <= 2
         assert topic
+        assert retain == False, "retain=True is not supported by SimCOMM A76xx for last will"
         self.lw_topic = topic
         self.lw_msg = msg
         self.lw_qos = qos
@@ -214,14 +215,14 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
 
-    client.set_last_will(b"BWtest/lastwill", b"Goodbye, cruel world!", retain=True, qos=1)
+    client.set_last_will(b"BWtest/lastwill", b"Goodbye, cruel world!", qos=1)
 
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
     client.connect()
     
     # Publish and be damned
-    client.publish(b"BWtest/topic", b"Hi there, MQTT from SIMCom A7683E!", retain=True)
+    client.publish(b"BWtest/topic", b"Hi there yet again, MQTT from SIMCom A7683E!", retain=True)
 
     # Disconnect and stop MQTT
     client.disconnect()
