@@ -77,10 +77,11 @@ class MQTTClient:
             port (int): The port to connect to the MQTT server.
             user (str): The username for the MQTT connection.
             password (str): The password for the MQTT connection.
-            keepalive (int): The keepalive interval in seconds.
+            keepalive (int): The keepalive interval in seconds. (0 < keepalive <= 64800)
             ssl (bool): Whether to use SSL for the connection.
             ssl_params (dict): SSL parameters for the connection.
         """
+        assert 0 < keepalive <= 64800
         #self.baudrate = baudrate
         #self.timeout = timeout
         #self.serial = serial.Serial(port, baudrate, timeout=timeout)
@@ -115,13 +116,13 @@ class MQTTClient:
             print(send_at_command(f'CSSLCFG="enableSNI",{self.ssl_context},{int(enable_SNI)}')) # Set Server Name Indication
             print(send_at_command(f'CMQTTSSLCFG={self.client_index},{self.ssl_context}'))       # Set SSL context for MQTT
 
-    def connect(self, clean_session = True, timeout = 60): # ToDO: default timeout should be 0
+    def connect(self, clean_session = True, timeout = 2): # ToDO: default timeout should be 0
         """
         Connect to the MQTT broker.
 
         Args:
             clean_session (bool): Whether to start a clean session.
-            timeout (int): Timeout in seconds for the connection.
+            timeout (int): Timeout in seconds for the connection. (0 <= timeout)
 
         Returns:
             bool: True if connected to a persistent session, False otherwise.
@@ -157,13 +158,15 @@ class MQTTClient:
         Set the last will message to be sent by the broker when the client disconnects unexpectedly.
 
         Args:
-            topic (str): The topic for the last will message.
-            msg (str): The message payload.
-            retain (bool): Whether to retain the message.
-            qos (int): The Quality of Service level.
+            topic (bytes): The topic for the last will message. (0 < len(topic) <= 1024)
+            msg (bytes): The message payload. (0 < len(msg) <= 1024)
+            retain (bool): Whether to retain the message. (retain must be False)
+            qos (int): The Quality of Service level. (0 <= qos <= 2)
         """
         assert 0 <= qos <= 2
         assert topic
+        assert 0 < len(topic) <= 1024
+        assert 0 < len(msg) <= 1024 # note: will message is limited to 1024 bytes
         assert retain == False, "retain=True is not supported by SimCOMM A76xx for last will"
         self.lw_topic = topic
         self.lw_msg = msg
@@ -184,11 +187,14 @@ class MQTTClient:
         Publish a message to a topic.
 
         Args:
-            topic (str): The topic to publish to.
-            msg (str): The message payload.
+            topic (bytes): The topic to publish to. (0 < len(topic) <= 1024)
+            msg (bytes): The message payload. (0 < len(msg) <= 10240)
             retain (bool): Whether to retain the message.
-            qos (int): The Quality of Service level.
+            qos (int): The Quality of Service level. (0 <= qos <= 2)
         """
+        assert 0 <= qos <= 2
+        assert 0 < len(topic) <= 1024
+        assert 0 < len(msg) <= 10240
         print(send_at_command(f'CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=self.timeout))  # Send topic
         print(send_at_command(f'CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg, timeout=self.timeout))  # Send payload
         print(send_at_command(f'CMQTTPUB={self.client_index},{qos},{self.timeout},{int(retain)}'))  # Publish the message
@@ -199,11 +205,25 @@ class MQTTClient:
         Subscribe to a topic.
 
         Args:
-            topic (str): The topic to subscribe to.
-            qos (int): The Quality of Service level.
+            topic (bytes): The topic to subscribe to. (0 < len(topic) <= 1024)
+            qos (int): The Quality of Service level. (0 <= qos <= 2)
         """
         assert self.cb != None
+        assert 0 <= qos <= 2
+        assert 0 < len(topic) <= 1024
         print(send_at_command(f'CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic, timeout=self.timeout))  # Subscribe to the topic
+
+    def wait_msg():
+        """
+        Wait for a message to be received.
+        """
+        pass
+
+    def check_msg():
+        """
+        Check for a message to be received.
+        """
+        pass
 
 with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     # Start MQTT session
@@ -222,7 +242,8 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     client.connect()
     
     # Publish and be damned
-    client.publish(b"BWtest/topic", b"Hi there yet again, MQTT from SIMCom A7683E!", retain=True)
+    msg = b"Hi there yet again, MQTT from SIMCom A7683E!"
+    client.publish(b"BWtest/topic", msg, retain=True)
 
     # Disconnect and stop MQTT
     client.disconnect()
