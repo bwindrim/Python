@@ -25,20 +25,23 @@ class SimCOMSocket:
         self.send_at_command("AT+CGACT=1,1")
         self.connected = True
 
-    def socket(self, socket_type):
+    def socket(self, socket_type, use_tls=False):
         if not self.connected:
             raise Exception("Modem not connected")
-        return SimCOMSocketInstance(self.ser, socket_type)
+        return SimCOMSocketInstance(self.ser, socket_type, use_tls)
 
 class SimCOMSocketInstance:
-    def __init__(self, ser, socket_type):
+    def __init__(self, ser, socket_type, use_tls):
         self.ser = ser
         self.socket_type = socket_type
+        self.use_tls = use_tls
         self.cid = None
 
     def connect(self, host, port):
         self.cid = self.send_at_command('AT+NETOPEN', '+NETOPEN: 0')
         protocol = "TCP" if self.socket_type == "TCP" else "UDP"
+        if self.use_tls:
+            self.send_at_command('AT+CIPSSL=1', 'OK')
         self.send_at_command(f'AT+CIPOPEN=0,"{protocol}","{host}",{port}', 'OK')
 
     def send(self, data):
@@ -76,3 +79,11 @@ if __name__ == "__main__":
     udp_response = udp_sock.recv(1024)
     print("UDP Response:", udp_response)
     udp_sock.close()
+    
+    # TLS Example
+    tls_sock = modem.socket(socket_type="TCP", use_tls=True)
+    tls_sock.connect('example.com', 443)
+    tls_sock.send(b'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n')
+    tls_response = tls_sock.recv(1024)
+    print("TLS Response:", tls_response)
+    tls_sock.close()
