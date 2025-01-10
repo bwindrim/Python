@@ -25,19 +25,21 @@ class SimCOMSocket:
         self.send_at_command("AT+CGACT=1,1")
         self.connected = True
 
-    def socket(self):
+    def socket(self, socket_type):
         if not self.connected:
             raise Exception("Modem not connected")
-        return SimCOMSocketInstance(self.ser)
+        return SimCOMSocketInstance(self.ser, socket_type)
 
 class SimCOMSocketInstance:
-    def __init__(self, ser):
+    def __init__(self, ser, socket_type):
         self.ser = ser
+        self.socket_type = socket_type
         self.cid = None
 
     def connect(self, host, port):
         self.cid = self.send_at_command('AT+NETOPEN', '+NETOPEN: 0')
-        self.send_at_command(f'AT+CIPOPEN=0,"TCP","{host}",{port}', 'OK')
+        protocol = "TCP" if self.socket_type == "TCP" else "UDP"
+        self.send_at_command(f'AT+CIPOPEN=0,"{protocol}","{host}",{port}', 'OK')
 
     def send(self, data):
         self.send_at_command(f'AT+CIPSEND=0,{len(data)}', '>')
@@ -58,9 +60,19 @@ class SimCOMSocketInstance:
 if __name__ == "__main__":
     modem = SimCOMSocket(port='/dev/ttyUSB0')
     modem.connect(apn='your_apn')
-    sock = modem.socket()
-    sock.connect('example.com', 80)
-    sock.send(b'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n')
-    response = sock.recv(1024)
-    print(response)
-    sock.close()
+    
+    # TCP Example
+    tcp_sock = modem.socket(socket_type="TCP")
+    tcp_sock.connect('example.com', 80)
+    tcp_sock.send(b'GET / HTTP/1.1\r\nHost: example.com\r\n\r\n')
+    tcp_response = tcp_sock.recv(1024)
+    print("TCP Response:", tcp_response)
+    tcp_sock.close()
+    
+    # UDP Example
+    udp_sock = modem.socket(socket_type="UDP")
+    udp_sock.connect('example.com', 12345)
+    udp_sock.send(b'Hello, UDP!')
+    udp_response = udp_sock.recv(1024)
+    print("UDP Response:", udp_response)
+    udp_sock.close()
