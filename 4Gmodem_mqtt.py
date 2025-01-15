@@ -1,70 +1,8 @@
 import serial
 import time
 
-def send_at_command(command, expected_response="OK", payload=None, timeout=2):
-    """
-    Send an AT command to the modem and wait for the expected response.
-
-    Args:
-        command (str): The AT command to send.
-        expected_response (str): The expected response from the modem.
-        payload (bytes): Optional payload to send after the command.
-        timeout (int): Timeout in seconds to wait for the response.
-
-    Returns:
-        str: The response from the modem.
-    """
-    cmd_str = command + '\r\n'
-    modem.write(cmd_str.encode())
-    time.sleep(0.1)  # Small delay to allow modem to process
-    
-    start_time = time.time()
-
-    if payload:
-        # Wait for the '>' prompt before sending data
-        # ToDo: add timeout
-        while True:
-            if modem.in_waiting > 0:
-                response = modem.read(1)
-                if b'>' == response:
-                    modem.write(payload)
-                    break
-        
-    response = b""
-    
-    while (time.time() - start_time) < timeout:
-        if modem.in_waiting > 0:
-            response += modem.read(modem.in_waiting)
-            if expected_response in response.decode():
-                return response.decode()
-    
-    return response.decode()
-
-
-def MQTTStart(apn):
-    """
-    Start the MQTT session by configuring and activating the PDP context.
-
-    Args:
-        apn (str): The Access Point Name for the PDP context.
-    """
-    context_num = 1
-    print(send_at_command(f'AT+CGDCONT=1,"IP","{apn}"')) # Configure PDP context
-    print(send_at_command(f'AT+CGACT=1,{context_num}'))  # Activate PDP context
-    print(send_at_command(f'AT+CMQTTSTART'))             # Start MQTT session
-    time.sleep(2)
-
-def MQTTStop():
-    """
-    Stop the MQTT session by deactivating the PDP context.
-    """
-    context_num = 1
-    print(send_at_command(f'AT+CMQTTSTOP'))             # Stop MQTT session
-    print(send_at_command(f'AT+CGACT=0,{context_num}')) # Deactivate PDP context
-
-
 class MQTTClient:
-    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=60, ssl=False, ssl_params={}): #, port, baudrate=115200, timeout=1):
+    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=60, ssl=False, ssl_params={}):
         """
         Initialize the MQTT client.
 
@@ -79,15 +17,13 @@ class MQTTClient:
             ssl_params (dict): SSL parameters for the connection.
         """
         assert 0 < keepalive <= 64800
-        #self.baudrate = baudrate
-        #self.timeout = timeout
-        #self.serial = serial.Serial(port, baudrate, timeout=timeout)
         self.client_id = client_id
         self.server_url = server
         if port == 0:
             self.port = 8883 if ssl else 1883
         else:
             self.port = port
+        self.connected = False
         self.cb = None
         self.user = user
         self.password = password
@@ -98,26 +34,60 @@ class MQTTClient:
         self.lw_msg = None
         self.lw_qos = 0
         self.lw_retain = False
-        print(send_at_command(f'AT+CMQTTACCQ={self.client_index},"{self.client_id}",{int(ssl)}'))
+        self.use_ssl = ssl
         if ssl:
             self.ssl_context = 1 # ToDo: just use client_index?
-            ca_cert = ssl_params['ca_cert']
-            ssl_version = ssl_params['ssl_version']
-            auth_mode = ssl_params['auth_mode']
-            ignore_local_time = ssl_params['ignore_local_time']
-            enable_SNI = ssl_params['enable_SNI']
-            print(send_at_command(f'AT+CSSLCFG="sslversion",{self.ssl_context},{ssl_version}'))    # set SSL version
-            print(send_at_command(f'AT+CSSLCFG="authmode",{self.ssl_context},{auth_mode}'))        # set authentication mode
-            print(send_at_command(f'AT+CSSLCFG="ignorelocaltime",{self.ssl_context},{int(ignore_local_time)}'))
-            print(send_at_command(f'AT+CSSLCFG="cacert",{self.ssl_context},"{ca_cert}"'))          # Set CA root certificate
-            print(send_at_command(f'AT+CSSLCFG="enableSNI",{self.ssl_context},{int(enable_SNI)}')) # Set Server Name Indication
-            print(send_at_command(f'AT+CMQTTSSLCFG={self.client_index},{self.ssl_context}'))       # Set SSL context for MQTT
+            self.ca_cert = ssl_params['ca_cert']
+            self.ssl_version = ssl_params['ssl_version']
+            self.auth_mode = ssl_params['auth_mode']
+            self.ignore_local_time = ssl_params['ignore_local_time']
+            self.enable_SNI = ssl_params['enable_SNI']
 
-    def connect(self, clean_session = True, timeout = 2): # ToDO: default timeout should be 0
+    def _send_at_command(self, command, expected_response="OK", payload=None, timeout=2):
+        """
+        Send an AT command to the modem and wait for the expected response.
+
+        Args:
+            command (str): The AT command to send.
+            expected_response (str): The expected response from the self.modem.
+            payload (bytes): Optional payload to send after the command.
+            timeout (int): Timeout in seconds to wait for the response.
+
+        Returns:
+            str: The response from the self.modem.
+        """
+        cmd_str = command + '\r\n'
+        self.modem.write(cmd_str.encode())
+        time.sleep(0.1)  # Small delay to allow modem to process
+        
+        start_time = time.time()
+
+        if payload:
+            # Wait for the '>' prompt before sending data
+            # ToDo: add timeout
+            while True:
+                if self.modem.in_waiting > 0:
+                    response = self.modem.read(1)
+                    if b'>' == response:
+                        self.modem.write(payload)
+                        break
+            
+        response = b""
+        
+        while (time.time() - start_time) < timeout:
+            if self.modem.in_waiting > 0:
+                response += self.modem.read(self.modem.in_waiting)
+                if expected_response in response.decode():
+                    break
+        
+        print(response.decode())
+
+    def connect(self, apn="iot.1nce.net", clean_session = True, timeout = 2): # ToDO: default timeout should be 0
         """
         Connect to the MQTT broker.
 
         Args:
+            apn (str): The Access Point Name for the PDP context.
             clean_session (bool): Whether to start a clean session.
             timeout (int): Timeout in seconds for the connection. (0 <= timeout)
 
@@ -133,22 +103,45 @@ class MQTTClient:
             credentials = ''
         self.timeout = timeout
 
-        if self.lw_topic:
-            print(send_at_command(f'AT+CMQTTWILLTOPIC={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic, timeout=self.timeout))  # Send topic
-            print(send_at_command(f'AT+CMQTTWILLMSG={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg, timeout=self.timeout))  # Send payload
+        self.modem = serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=timeout)
+        self.context_num = 1
+        self._send_at_command(f'AT+CGDCONT=1,"IP","{apn}"') # Configure PDP context
+        self._send_at_command(f'AT+CGACT=1,{self.context_num}')  # Activate PDP context
+        self._send_at_command(f'AT+CMQTTSTART')             # Start MQTT session
+        time.sleep(2)
 
-        print(send_at_command(f'AT+CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}', timeout=self.timeout))
+        self._send_at_command(f'AT+CMQTTACCQ={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
+        if self.use_ssl:
+            self.ssl_context = 1 # ToDo: just use client_index?
+            self._send_at_command(f'AT+CSSLCFG="sslversion",{self.ssl_context},{self.ssl_version}')    # set SSL version
+            self._send_at_command(f'AT+CSSLCFG="authmode",{self.ssl_context},{self.auth_mode}')        # set authentication mode
+            self._send_at_command(f'AT+CSSLCFG="ignorelocaltime",{self.ssl_context},{int(self.ignore_local_time)}')
+            self._send_at_command(f'AT+CSSLCFG="cacert",{self.ssl_context},"{self.ca_cert}"')          # Set CA root certificate
+            self._send_at_command(f'AT+CSSLCFG="enableSNI",{self.ssl_context},{int(self.enable_SNI)}') # Set Server Name Indication
+            self._send_at_command(f'AT+CMQTTSSLCFG={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
+
+        if self.lw_topic:
+            self._send_at_command(f'AT+CMQTTWILLTOPIC={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic, timeout=self.timeout)  # Send topic
+            self._send_at_command(f'AT+CMQTTWILLMSG={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg, timeout=self.timeout)  # Send payload
+
+        self._send_at_command(f'AT+CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}', timeout=self.timeout)
         time.sleep(3)
+        self.connected = True
         return False # ToDO: return true if connected to a persistent session?
     
     def disconnect(self):
         """
         Disconnect from the MQTT broker and release the client.
         """
-        if self.client_index != None:
-            print(send_at_command(f'AT+CMQTTDISC={self.client_index}')) # disconnect from the broker
-            print(send_at_command(f'AT+CMQTTREL={self.client_index}'))  # release the client
-            self.client_index = None
+        if self.connected:
+            if self.client_index != None:
+                self._send_at_command(f'AT+CMQTTDISC={self.client_index}') # disconnect from the broker
+                self._send_at_command(f'AT+CMQTTREL={self.client_index}')  # release the client
+                self.client_index = None
+            self._send_at_command(f'AT+CMQTTSTOP')             # Stop MQTT session
+            self._send_at_command(f'AT+CGACT=0,{self.context_num}') # Deactivate PDP context
+            self.modem.close()
+            self.connected = False
 
     def set_last_will(self, topic, msg, retain=False, qos=0):
         """
@@ -192,9 +185,9 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         assert 0 < len(msg) <= 10240
-        print(send_at_command(f'AT+CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=self.timeout))  # Send topic
-        print(send_at_command(f'AT+CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg, timeout=self.timeout))  # Send payload
-        print(send_at_command(f'AT+CMQTTPUB={self.client_index},{qos},{self.timeout},{int(retain)}'))  # Publish the message
+        self._send_at_command(f'AT+CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=self.timeout)  # Send topic
+        self._send_at_command(f'AT+CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg, timeout=self.timeout)  # Send payload
+        self._send_at_command(f'AT+CMQTTPUB={self.client_index},{qos},{self.timeout},{int(retain)}')  # Publish the message
         time.sleep(3)
 
     def subscribe(self, topic, qos=0):
@@ -208,27 +201,25 @@ class MQTTClient:
         assert self.cb != None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        print(send_at_command(f'AT+CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic, timeout=self.timeout))  # Subscribe to the topic
+        print(f'subscribing to {topic}')
+        self._send_at_command(f'AT+CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic, timeout=self.timeout)  # Subscribe to the topic
 
-    def wait_msg():
+    def wait_msg(self):
         """
         Wait for a message to be received.
         """
         pass
 
-    def check_msg():
+    def check_msg(self):
         """
         Check for a message to be received.
         """
-        pass
+        if self.modem.in_waiting > 0:
+            msg = self.modem.read(self.modem.in_waiting)
+            self.cb(msg)
 
-with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
+def test():
     # Start MQTT session
-    MQTTStart("iot.1nce.net")
-
-    # Verify IP address
-    print(send_at_command(f'AT+CGPADDR=1'))
-
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
 
@@ -237,11 +228,16 @@ with serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=1) as modem:
     # Connect to MQTT broker
     print("Connecting to MQTT broker...")
     client.connect()
-    
+
+    # Subscribe to a topic
+    client.set_callback(lambda msg: print(msg))
+    #client.subscribe(b"BWtest/topic", qos=1)
+
     # Publish and be damned
     msg = b"Hi there yet again, MQTT from SIMCom A7683E!"
     client.publish(b"BWtest/topic", msg, retain=True)
 
     # Disconnect and stop MQTT
     client.disconnect()
-    MQTTStop()
+
+test()
