@@ -43,7 +43,7 @@ class MQTTClient:
             self.ignore_local_time = ssl_params['ignore_local_time']
             self.enable_SNI = ssl_params['enable_SNI']
 
-    def _send_at_command(self, command, expected_response="OK", payload=None, timeout=2):
+    def _send_at_command(self, command, expected_response="OK", payload=None):
         """
         Send an AT command to the modem and wait for the expected response.
 
@@ -68,19 +68,21 @@ class MQTTClient:
             while True:
                 if self.modem.in_waiting > 0:
                     response = self.modem.read(1)
+                    print(response.decode(), end="")
                     if b'>' == response:
                         self.modem.write(payload)
+                        print(payload.decode(), end="")
                         break
             
         response = b""
         
-        while (time.time() - start_time) < timeout:
+        while (time.time() - start_time) < self.timeout:
             if self.modem.in_waiting > 0:
                 response += self.modem.read(self.modem.in_waiting)
                 if expected_response in response.decode():
                     break
         
-        print(response.decode())
+        print(response.decode(), end="")
 
     def connect(self, apn="iot.1nce.net", clean_session = True, timeout = 2): # ToDO: default timeout should be 0
         """
@@ -121,10 +123,10 @@ class MQTTClient:
             self._send_at_command(f'AT+CMQTTSSLCFG={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
 
         if self.lw_topic:
-            self._send_at_command(f'AT+CMQTTWILLTOPIC={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic, timeout=self.timeout)  # Send topic
-            self._send_at_command(f'AT+CMQTTWILLMSG={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg, timeout=self.timeout)  # Send payload
+            self._send_at_command(f'AT+CMQTTWILLTOPIC={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
+            self._send_at_command(f'AT+CMQTTWILLMSG={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
 
-        self._send_at_command(f'AT+CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}', timeout=self.timeout)
+        self._send_at_command(f'AT+CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}')
         time.sleep(3)
         self.connected = True
         return False # ToDO: return true if connected to a persistent session?
@@ -172,7 +174,7 @@ class MQTTClient:
         """
         self.cb = f
 
-    def publish(self, topic, msg, retain=False, qos=0):
+    def publish(self, topic, msg, retain=False, qos=0, pub_timeout=60):
         """
         Publish a message to a topic.
 
@@ -185,9 +187,9 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         assert 0 < len(msg) <= 10240
-        self._send_at_command(f'AT+CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic, timeout=self.timeout)  # Send topic
-        self._send_at_command(f'AT+CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg, timeout=self.timeout)  # Send payload
-        self._send_at_command(f'AT+CMQTTPUB={self.client_index},{qos},{self.timeout},{int(retain)}')  # Publish the message
+        self._send_at_command(f'AT+CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic)  # Send topic
+        self._send_at_command(f'AT+CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg)  # Send payload
+        self._send_at_command(f'AT+CMQTTPUB={self.client_index},{qos},{pub_timeout},{int(retain)}')  # Publish the message
         time.sleep(3)
 
     def subscribe(self, topic, qos=0):
@@ -202,7 +204,7 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         print(f'subscribing to {topic}')
-        self._send_at_command(f'AT+CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic, timeout=self.timeout)  # Subscribe to the topic
+        self._send_at_command(f'AT+CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic)  # Subscribe to the topic
 
     def wait_msg(self):
         """
@@ -226,7 +228,6 @@ def test():
     client.set_last_will(b"BWtest/lastwill", b"Goodbye, cruel world!", qos=1)
 
     # Connect to MQTT broker
-    print("Connecting to MQTT broker...")
     client.connect()
 
     # Subscribe to a topic
