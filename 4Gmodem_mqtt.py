@@ -43,7 +43,7 @@ class MQTTClient:
             self.ignore_local_time = ssl_params['ignore_local_time']
             self.enable_SNI = ssl_params['enable_SNI']
 
-    def _send_at_command(self, command, body= "", expected_response="OK", payload=None):
+    def _send_at_command(self, command, body= "", expect_result=False, payload=None):
         """
         Send an AT command to the modem and wait for the expected response.
 
@@ -62,29 +62,81 @@ class MQTTClient:
         
         start_time = time.time()
 
-        response = b""
-        
-        if payload:
-            # Wait for the '>' prompt before sending data
-            # ToDo: add timeout
-            while True:
-                if self.modem.in_waiting > 0:
+        response = None
+        result = None
+
+        # Process one line at a time until we get a response
+        while True:
+            # Process a line, one character at a time
+            word = b""
+            char = self.modem.read(1)
+            print(char.decode(), end="")
+            while char != b'\n':
+                if b'>' == char:
+                    if payload:
+                        self.modem.write(payload)
+                        print(payload.decode(), end="") 
+                elif char == b'+':
+                    # get word
                     char = self.modem.read(1)
                     print(char.decode(), end="")
-                    if b'>' == char:
-                        self.modem.write(payload)
-                        print(payload.decode(), end="")
-                        break
+                    while char.isalpha():
+                        word += char
+                        char = self.modem.read(1)
+                        print(char.decode(), end="")
+                    if word.decode() == command:
+                        # Solicited response
+                        result = True
+                        print("Solicited response", end="")
                     else:
-                        response += char
-            
-        while (time.time() - start_time) < self.timeout:
-            if self.modem.in_waiting > 0:
-                response += self.modem.read(self.modem.in_waiting)
-                if expected_response in response.decode():
-                    break
-        
-        print(response.decode(), end="")
+                        # Unsolicited response
+                        pass
+                    # get rest of line
+                    pass
+                elif char.isalpha():
+                    # get rest of word
+                    while char.isalpha():
+                        word += char
+                        char = self.modem.read(1)
+                        print(char.decode(), end="")
+                    if word == b'ERROR':
+                        response = False
+                    elif word == b'OK':
+                        response = True
+                    elif word == b'AT':
+                        pass
+                    else:
+                        print(f"Unknown response: {word}")
+                elif char == b'\n':
+                    pass
+                elif char == b'\r':
+                    pass
+                else:
+                    print(f"Unexpected char: {char}")
+                
+                # Wait for the end of the line
+                while char != b'\n':
+                    char = self.modem.read(1)
+                    print(char.decode(), end="")
+
+            # Check if we have a response
+            if response is not None:
+                if response == False:
+                    if result is None:
+                        return -1
+                    else:
+                        return result
+                else:
+                    if expect_result:
+                        if result is None:
+                            pass
+                        else:
+                            return result
+                    else:
+                        return 0
+            else:
+                # Wait for the next line
+                pass
 
     def connect(self, apn="iot.1nce.net", clean_session = True, timeout = 2): # ToDO: default timeout should be 0
         """
@@ -107,11 +159,11 @@ class MQTTClient:
             credentials = ''
         self.timeout = timeout
 
-        self.modem = serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=timeout)
+        self.modem = serial.Serial(port='/dev/ttyAMA0', baudrate=115200) #, timeout=timeout)
         self.context_num = 1
         self._send_at_command('CGDCONT', f'=1,"IP","{apn}"') # Configure PDP context
         self._send_at_command('CGACT', f'=1,{self.context_num}')  # Activate PDP context
-        self._send_at_command('CMQTTSTART')             # Start MQTT session
+        self._send_at_command('CMQTTSTART', expect_result=True)             # Start MQTT session
         time.sleep(2)
 
         self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
@@ -120,7 +172,7 @@ class MQTTClient:
             self._send_at_command('CSSLCFG', f'="sslversion",{self.ssl_context},{self.ssl_version}')    # set SSL version
             self._send_at_command('CSSLCFG', f'="authmode",{self.ssl_context},{self.auth_mode}')        # set authentication mode
             self._send_at_command('CSSLCFG', f'="ignorelocaltime",{self.ssl_context},{int(self.ignore_local_time)}')
-            self._send_at_command('CSSLCFG', f'"cacert",{self.ssl_context},"{self.ca_cert}"')          # Set CA root certificate
+            self._send_at_command('CSSLCFG', f'="cacert",{self.ssl_context},"{self.ca_cert}"')          # Set CA root certificate
             self._send_at_command('CSSLCFG', f'="enableSNI",{self.ssl_context},{int(self.enable_SNI)}') # Set Server Name Indication
             self._send_at_command('CMQTTSSLCFG', f'={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
 
@@ -128,7 +180,7 @@ class MQTTClient:
             self._send_at_command('CMQTTWILLTOPIC', f'={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
             self._send_at_command('CMQTTWILLMSG', f'={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
 
-        self._send_at_command('CMQTTCONNECT', f'={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}')
+        self._send_at_command('CMQTTCONNECT', f'={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}', expect_result=True)
         time.sleep(3)
         self.connected = True
         return False # ToDO: return true if connected to a persistent session?
@@ -139,10 +191,10 @@ class MQTTClient:
         """
         if self.connected:
             if self.client_index != None:
-                self._send_at_command('CMQTTDISC', f'={self.client_index}') # disconnect from the broker
+                self._send_at_command('CMQTTDISC', f'={self.client_index}', expect_result=True) # disconnect from the broker
                 self._send_at_command('CMQTTREL', f'={self.client_index}')  # release the client
                 self.client_index = None
-            self._send_at_command('CMQTTSTOP')             # Stop MQTT session
+            self._send_at_command('CMQTTSTOP', expect_result=True)             # Stop MQTT session
             self._send_at_command('CGACT', f'=0,{self.context_num}') # Deactivate PDP context
             self.modem.close()
             self.connected = False
@@ -191,7 +243,7 @@ class MQTTClient:
         assert 0 < len(msg) <= 10240
         self._send_at_command('CMQTTTOPIC', f'={self.client_index},{len(topic)}', payload=topic)  # Send topic
         self._send_at_command('CMQTTPAYLOAD', f'={self.client_index},{len(msg)}', payload=msg)  # Send payload
-        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}')  # Publish the message
+        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', expect_result=True)  # Publish the message
         time.sleep(3)
 
     def subscribe(self, topic, qos=0):
