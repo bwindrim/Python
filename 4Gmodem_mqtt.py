@@ -43,7 +43,7 @@ class MQTTClient:
             self.ignore_local_time = ssl_params['ignore_local_time']
             self.enable_SNI = ssl_params['enable_SNI']
 
-    def _send_at_command(self, command, body= "", expect_result=False, payload=None):
+    def _send_at_command(self, command, body= "", result_handler=None, payload=None):
         """
         Send an AT command to the modem and wait for the expected response.
 
@@ -86,8 +86,9 @@ class MQTTClient:
                         print(char.decode(), end="")
                     if word.decode() == command:
                         # Solicited response
-                        result = True
-                        print("Solicited response", end="")
+                        result = self.modem.readline()
+                        char = b'\n'
+                        print("Solicited response", result.decode(), end="")
                     else:
                         # Unsolicited response
                         pass
@@ -104,13 +105,13 @@ class MQTTClient:
                     elif word == b'OK':
                         response = True
                     elif word == b'AT':
-                        pass
+                        pass # ignore echo
                     else:
                         print(f"Unknown response: {word}")
                 elif char == b'\n':
-                    pass
+                    pass # ignore newlines
                 elif char == b'\r':
-                    pass
+                    pass # ignore carriage returns
                 else:
                     print(f"Unexpected char: {char}")
                 
@@ -125,13 +126,15 @@ class MQTTClient:
                     if result is None:
                         return -1
                     else:
-                        return result
+                        print("result = ", result_handler(result.strip()))
+                        return result_handler(result.strip())
                 else:
-                    if expect_result:
+                    if result_handler is not None:
                         if result is None:
                             pass
                         else:
-                            return result
+                            print("result = ", result_handler(result.strip()))
+                            return result_handler(result.strip())
                     else:
                         return 0
             else:
@@ -163,8 +166,8 @@ class MQTTClient:
         self.context_num = 1
         self._send_at_command('CGDCONT', f'=1,"IP","{apn}"') # Configure PDP context
         self._send_at_command('CGACT', f'=1,{self.context_num}')  # Activate PDP context
-        self._send_at_command('CMQTTSTART', expect_result=True)             # Start MQTT session
-        time.sleep(2)
+        self._send_at_command('CMQTTSTART', result_handler=lambda s: int(s))             # Start MQTT session
+        #time.sleep(2)
 
         self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
         if self.use_ssl:
@@ -180,8 +183,9 @@ class MQTTClient:
             self._send_at_command('CMQTTWILLTOPIC', f'={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
             self._send_at_command('CMQTTWILLMSG', f'={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
 
-        self._send_at_command('CMQTTCONNECT', f'={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}', expect_result=True)
-        time.sleep(3)
+        self._send_at_command('CMQTTCONNECT', f'={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}',
+        result_handler=lambda s: int(s.split(b',')[1]))  # Connect to the broker
+        #time.sleep(3)
         self.connected = True
         return False # ToDO: return true if connected to a persistent session?
     
@@ -191,10 +195,10 @@ class MQTTClient:
         """
         if self.connected:
             if self.client_index != None:
-                self._send_at_command('CMQTTDISC', f'={self.client_index}', expect_result=True) # disconnect from the broker
+                self._send_at_command('CMQTTDISC', f'={self.client_index}', result_handler=lambda x: True) # disconnect from the broker
                 self._send_at_command('CMQTTREL', f'={self.client_index}')  # release the client
                 self.client_index = None
-            self._send_at_command('CMQTTSTOP', expect_result=True)             # Stop MQTT session
+            self._send_at_command('CMQTTSTOP', result_handler=lambda x: True)             # Stop MQTT session
             self._send_at_command('CGACT', f'=0,{self.context_num}') # Deactivate PDP context
             self.modem.close()
             self.connected = False
@@ -243,8 +247,8 @@ class MQTTClient:
         assert 0 < len(msg) <= 10240
         self._send_at_command('CMQTTTOPIC', f'={self.client_index},{len(topic)}', payload=topic)  # Send topic
         self._send_at_command('CMQTTPAYLOAD', f'={self.client_index},{len(msg)}', payload=msg)  # Send payload
-        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', expect_result=True)  # Publish the message
-        time.sleep(3)
+        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', result_handler=lambda x: True)  # Publish the message
+        #time.sleep(3)
 
     def subscribe(self, topic, qos=0):
         """
@@ -304,7 +308,7 @@ def test():
     # Subscribe to a topic
     client.set_callback(lambda msg: print(msg))
 #    client.subscribe(b"BWtest/topic", qos=1)
-    time.sleep(2)
+    #time.sleep(2)
 #    client.unsubscribe(b"BWtest/topic")
 
     # Disconnect and stop MQTT
