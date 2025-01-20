@@ -43,7 +43,7 @@ class MQTTClient:
             self.ignore_local_time = ssl_params['ignore_local_time']
             self.enable_SNI = ssl_params['enable_SNI']
 
-    def _send_at_command(self, command, expected_response="OK", payload=None):
+    def _send_at_command(self, command, body= "", expected_response="OK", payload=None):
         """
         Send an AT command to the modem and wait for the expected response.
 
@@ -56,26 +56,28 @@ class MQTTClient:
         Returns:
             str: The response from the self.modem.
         """
-        cmd_str = command + '\r\n'
+        cmd_str = 'AT+' + command + body +'\r\n'
         self.modem.write(cmd_str.encode())
         time.sleep(0.1)  # Small delay to allow modem to process
         
         start_time = time.time()
 
+        response = b""
+        
         if payload:
             # Wait for the '>' prompt before sending data
             # ToDo: add timeout
             while True:
                 if self.modem.in_waiting > 0:
-                    response = self.modem.read(1)
-                    print(response.decode(), end="")
-                    if b'>' == response:
+                    char = self.modem.read(1)
+                    print(char.decode(), end="")
+                    if b'>' == char:
                         self.modem.write(payload)
                         print(payload.decode(), end="")
                         break
+                    else:
+                        response += char
             
-        response = b""
-        
         while (time.time() - start_time) < self.timeout:
             if self.modem.in_waiting > 0:
                 response += self.modem.read(self.modem.in_waiting)
@@ -107,26 +109,26 @@ class MQTTClient:
 
         self.modem = serial.Serial(port='/dev/ttyAMA0', baudrate=115200, timeout=timeout)
         self.context_num = 1
-        self._send_at_command(f'AT+CGDCONT=1,"IP","{apn}"') # Configure PDP context
-        self._send_at_command(f'AT+CGACT=1,{self.context_num}')  # Activate PDP context
-        self._send_at_command(f'AT+CMQTTSTART')             # Start MQTT session
+        self._send_at_command('CGDCONT', f'=1,"IP","{apn}"') # Configure PDP context
+        self._send_at_command('CGACT', f'=1,{self.context_num}')  # Activate PDP context
+        self._send_at_command('CMQTTSTART')             # Start MQTT session
         time.sleep(2)
 
-        self._send_at_command(f'AT+CMQTTACCQ={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
+        self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
         if self.use_ssl:
             self.ssl_context = 1 # ToDo: just use client_index?
-            self._send_at_command(f'AT+CSSLCFG="sslversion",{self.ssl_context},{self.ssl_version}')    # set SSL version
-            self._send_at_command(f'AT+CSSLCFG="authmode",{self.ssl_context},{self.auth_mode}')        # set authentication mode
-            self._send_at_command(f'AT+CSSLCFG="ignorelocaltime",{self.ssl_context},{int(self.ignore_local_time)}')
-            self._send_at_command(f'AT+CSSLCFG="cacert",{self.ssl_context},"{self.ca_cert}"')          # Set CA root certificate
-            self._send_at_command(f'AT+CSSLCFG="enableSNI",{self.ssl_context},{int(self.enable_SNI)}') # Set Server Name Indication
-            self._send_at_command(f'AT+CMQTTSSLCFG={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
+            self._send_at_command('CSSLCFG', f'="sslversion",{self.ssl_context},{self.ssl_version}')    # set SSL version
+            self._send_at_command('CSSLCFG', f'="authmode",{self.ssl_context},{self.auth_mode}')        # set authentication mode
+            self._send_at_command('CSSLCFG', f'="ignorelocaltime",{self.ssl_context},{int(self.ignore_local_time)}')
+            self._send_at_command('CSSLCFG', f'"cacert",{self.ssl_context},"{self.ca_cert}"')          # Set CA root certificate
+            self._send_at_command('CSSLCFG', f'="enableSNI",{self.ssl_context},{int(self.enable_SNI)}') # Set Server Name Indication
+            self._send_at_command('CMQTTSSLCFG', f'={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
 
         if self.lw_topic:
-            self._send_at_command(f'AT+CMQTTWILLTOPIC={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
-            self._send_at_command(f'AT+CMQTTWILLMSG={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
+            self._send_at_command('CMQTTWILLTOPIC', f'={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
+            self._send_at_command('CMQTTWILLMSG', f'={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
 
-        self._send_at_command(f'AT+CMQTTCONNECT={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}')
+        self._send_at_command('CMQTTCONNECT', f'={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}')
         time.sleep(3)
         self.connected = True
         return False # ToDO: return true if connected to a persistent session?
@@ -137,11 +139,11 @@ class MQTTClient:
         """
         if self.connected:
             if self.client_index != None:
-                self._send_at_command(f'AT+CMQTTDISC={self.client_index}') # disconnect from the broker
-                self._send_at_command(f'AT+CMQTTREL={self.client_index}')  # release the client
+                self._send_at_command('CMQTTDISC', f'={self.client_index}') # disconnect from the broker
+                self._send_at_command('CMQTTREL', f'={self.client_index}')  # release the client
                 self.client_index = None
-            self._send_at_command(f'AT+CMQTTSTOP')             # Stop MQTT session
-            self._send_at_command(f'AT+CGACT=0,{self.context_num}') # Deactivate PDP context
+            self._send_at_command('CMQTTSTOP')             # Stop MQTT session
+            self._send_at_command('CGACT', f'=0,{self.context_num}') # Deactivate PDP context
             self.modem.close()
             self.connected = False
 
@@ -187,9 +189,9 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         assert 0 < len(msg) <= 10240
-        self._send_at_command(f'AT+CMQTTTOPIC={self.client_index},{len(topic)}', payload=topic)  # Send topic
-        self._send_at_command(f'AT+CMQTTPAYLOAD={self.client_index},{len(msg)}', payload=msg)  # Send payload
-        self._send_at_command(f'AT+CMQTTPUB={self.client_index},{qos},{pub_timeout},{int(retain)}')  # Publish the message
+        self._send_at_command('CMQTTTOPIC', f'={self.client_index},{len(topic)}', payload=topic)  # Send topic
+        self._send_at_command('CMQTTPAYLOAD', f'={self.client_index},{len(msg)}', payload=msg)  # Send payload
+        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}')  # Publish the message
         time.sleep(3)
 
     def subscribe(self, topic, qos=0):
@@ -204,7 +206,7 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         print(f'subscribing to {topic}')
-        self._send_at_command(f'AT+CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic)  # Subscribe to the topic
+        self._send_at_command('CMQTTSUB', f'={self.client_index},{len(topic)},{qos}', payload=topic)  # Subscribe to the topic
 
     def unsubscribe(self, topic, qos=0):
         """
@@ -217,7 +219,7 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         print(f'unsubscribing from {topic}')
-        self._send_at_command(f'AT+CMQTTUNSUB={self.client_index},{len(topic)},1', payload=topic)  # Subscribe to the topic
+        self._send_at_command('CMQTTUNSUB', f'={self.client_index},{len(topic)},1', payload=topic)  # Subscribe to the topic
 
     def wait_msg(self):
         """
