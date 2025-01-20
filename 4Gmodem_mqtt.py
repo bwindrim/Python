@@ -206,6 +206,19 @@ class MQTTClient:
         print(f'subscribing to {topic}')
         self._send_at_command(f'AT+CMQTTSUB={self.client_index},{len(topic)},{qos}', payload=topic)  # Subscribe to the topic
 
+    def unsubscribe(self, topic, qos=0):
+        """
+        Unsubscribe from a topic.
+
+        Args:
+            topic (bytes): The topic to subscribe to. (0 < len(topic) <= 1024)
+        """
+        assert self.cb != None
+        assert 0 <= qos <= 2
+        assert 0 < len(topic) <= 1024
+        print(f'unsubscribing from {topic}')
+        self._send_at_command(f'AT+CMQTTUNSUB={self.client_index},{len(topic)},1', payload=topic)  # Subscribe to the topic
+
     def wait_msg(self):
         """
         Wait for a message to be received.
@@ -230,13 +243,15 @@ def test():
     # Connect to MQTT broker
     client.connect()
 
-    # Subscribe to a topic
-    client.set_callback(lambda msg: print(msg))
-    #client.subscribe(b"BWtest/topic", qos=1)
-
     # Publish and be damned
     msg = b"Hi there yet again, MQTT from SIMCom A7683E!"
     client.publish(b"BWtest/topic", msg, retain=True)
+
+    # Subscribe to a topic
+    client.set_callback(lambda msg: print(msg))
+#    client.subscribe(b"BWtest/topic", qos=1)
+    time.sleep(2)
+#    client.unsubscribe(b"BWtest/topic")
 
     # Disconnect and stop MQTT
     client.disconnect()
