@@ -122,11 +122,6 @@ class MQTTClient:
             else:
                 print(f"Unexpected char: {char}")
             
-            # Wait for the end of the line
-            #while char != b'\n':
-            #    char = self.modem.read(1)
-            #    print(char.decode(), end="")
-            
             print(complete_line.decode(), end="")
             
             # Check if we have a response
@@ -176,7 +171,6 @@ class MQTTClient:
         self._send_at_command('CGDCONT', f'=1,"IP","{apn}"') # Configure PDP context
         self._send_at_command('CGACT', f'=1,{self.context_num}')  # Activate PDP context
         self._send_at_command('CMQTTSTART', result_handler=lambda s: int(s))             # Start MQTT session
-        #time.sleep(2)
 
         self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
         if self.use_ssl:
@@ -194,7 +188,6 @@ class MQTTClient:
 
         self._send_at_command('CMQTTCONNECT', f'={self.client_index},"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}',
         result_handler=lambda s: int(s.split(b',')[1]))  # Connect to the broker
-        #time.sleep(3)
         self.connected = True
         return False # ToDO: return true if connected to a persistent session?
     
@@ -257,7 +250,6 @@ class MQTTClient:
         self._send_at_command('CMQTTTOPIC', f'={self.client_index},{len(topic)}', payload=topic)  # Send topic
         self._send_at_command('CMQTTPAYLOAD', f'={self.client_index},{len(msg)}', payload=msg)  # Send payload
         self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: int(s.split(b',')[1]))  # Publish the message
-        #time.sleep(3)
 
     def subscribe(self, topic, qos=0):
         """
@@ -317,7 +309,6 @@ def test():
     # Subscribe to a topic
     client.set_callback(lambda msg: print(msg))
 #    client.subscribe(b"BWtest/topic", qos=1)
-    #time.sleep(2)
 #    client.unsubscribe(b"BWtest/topic")
 
     # Disconnect and stop MQTT
