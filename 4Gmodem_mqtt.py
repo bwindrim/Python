@@ -56,8 +56,9 @@ class MQTTClient:
         Returns:
             str: The response from the self.modem.
         """
-        cmd_str = 'AT+' + command + body +'\r\n'
-        self.modem.write(cmd_str.encode())
+        cmd_str = 'AT+' + command + body +'\r'
+        encoded_cmd = cmd_str.encode()
+        self.modem.write(encoded_cmd)
         time.sleep(0.1)  # Small delay to allow modem to process
         
         start_time = time.time()
@@ -70,71 +71,78 @@ class MQTTClient:
             # Process a line, one character at a time
             word = b""
             char = self.modem.read(1)
-            print(char.decode(), end="")
-            while char != b'\n':
-                if b'>' == char:
-                    if payload:
-                        self.modem.write(payload)
-                        print(payload.decode(), end="") 
-                elif char == b'+':
-                    # get word
+            complete_line = char # bytes type
+            #print(char.decode(), end="")
+            if b'>' == char:
+                if payload:
+                    self.modem.write(payload)
+                    #print(payload.decode(), end="")
+                    complete_line += payload # + '\n'
+            elif char == b'+':
+                # get word
+                char = self.modem.read(1)
+                #print(char.decode(), end="")
+                while char.isalpha():
+                    word += char
                     char = self.modem.read(1)
                     print(char.decode(), end="")
-                    while char.isalpha():
-                        word += char
-                        char = self.modem.read(1)
-                        print(char.decode(), end="")
-                    if word.decode() == command:
-                        # Solicited response
-                        result = self.modem.readline()
-                        char = b'\n'
-                        print("Solicited response", result.decode(), end="")
-                    else:
-                        # Unsolicited response
-                        line = b'+' + word + char + self.modem.readline()
-                        pass
-                    # get rest of line
-                    pass
-                elif char.isalpha():
-                    # get rest of word
-                    while char.isalpha():
-                        word += char
-                        char = self.modem.read(1)
-                        print(char.decode(), end="")
-                    if word == b'ERROR':
-                        response = False
-                    elif word == b'OK':
-                        response = True
-                    elif word == b'AT':
-                        pass # ignore echo
-                    else:
-                        print(f"Unknown response: {word}")
-                elif char == b'\n':
-                    pass # ignore newlines
-                elif char == b'\r':
-                    pass # ignore carriage returns
+                if word.decode() == command:
+                    # Solicited response
+                    result = self.modem.readline()
+                    char = b'\n'
+                    print("Solicited response", result.decode(), end="")
+                    complete_line += word + result
                 else:
-                    print(f"Unexpected char: {char}")
-                
-                # Wait for the end of the line
-                while char != b'\n':
+                    # Unsolicited response
+                    complete_line += word + char + self.modem.readline()
+                    pass
+                # get rest of line
+                pass
+            elif char.isalpha():
+                # get rest of word
+                while char.isalpha():
+                    word += char
                     char = self.modem.read(1)
-                    print(char.decode(), end="")
-
+                    #print(char.decode(), end="")
+                complete_line = word + char + self.modem.readline()
+                if word == b'ERROR':
+                    response = False
+                elif word == b'OK':
+                    response = True
+                elif word == b'AT':
+                    # The echoed command line includes an extra '\r' at the end, so strip both
+                    assert complete_line.strip() == cmd_str.encode().strip()
+                    pass # ignore echo
+                else:
+                    print(f"Unknown response: {word}")
+            elif char == b'\n':
+                pass # ignore newlines
+            elif char == b'\r':
+                pass # ignore carriage returns
+            else:
+                print(f"Unexpected char: {char}")
+            
+            # Wait for the end of the line
+            #while char != b'\n':
+            #    char = self.modem.read(1)
+            #    print(char.decode(), end="")
+            
+            print(complete_line.decode(), end="")
+            
             # Check if we have a response
             if response is not None:
                 if response == False:
                     if result is None:
                         return -1
                     else:
-                        print("result = ", result_handler(result.strip()))
+                        print("result =", result_handler(result.strip()))
                         return result_handler(result.strip())
                 else:
                     if result_handler is not None:
                         if result is None:
                             pass
                         else:
-                            print("result = ", result_handler(result.strip()))
+                            print("result =", result_handler(result.strip()))
                             return result_handler(result.strip())
                     else:
                         return 0
@@ -196,10 +204,10 @@ class MQTTClient:
         """
         if self.connected:
             if self.client_index != None:
-                self._send_at_command('CMQTTDISC', f'={self.client_index}', result_handler=lambda x: True) # disconnect from the broker
+                self._send_at_command('CMQTTDISC', f'={self.client_index}', result_handler=lambda s: int(s.split(b',')[1])) # disconnect from the broker
                 self._send_at_command('CMQTTREL', f'={self.client_index}')  # release the client
                 self.client_index = None
-            self._send_at_command('CMQTTSTOP', result_handler=lambda x: True)             # Stop MQTT session
+            self._send_at_command('CMQTTSTOP', result_handler=lambda s: int(s))             # Stop MQTT session
             self._send_at_command('CGACT', f'=0,{self.context_num}') # Deactivate PDP context
             self.modem.close()
             self.connected = False
@@ -248,7 +256,7 @@ class MQTTClient:
         assert 0 < len(msg) <= 10240
         self._send_at_command('CMQTTTOPIC', f'={self.client_index},{len(topic)}', payload=topic)  # Send topic
         self._send_at_command('CMQTTPAYLOAD', f'={self.client_index},{len(msg)}', payload=msg)  # Send payload
-        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', result_handler=lambda x: True)  # Publish the message
+        self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: int(s.split(b',')[1]))  # Publish the message
         #time.sleep(3)
 
     def subscribe(self, topic, qos=0):
