@@ -81,8 +81,6 @@ class MQTTClient:
         self.modem.write(encoded_cmd)
         time.sleep(0.1)  # Small delay to allow modem to process
         
-        start_time = time.time()
-
         response = None
         result = None
 
@@ -178,7 +176,7 @@ class MQTTClient:
         payload = None
         response = response.decode().strip()
         print(response, end="")
-        assert response.startswith('+') # Unsolicited responses should start with '+'
+        #assert response.startswith('+') # Unsolicited responses should start with '+'
         if response.startswith('+CMQTTRXSTART:'):
             # MQTT message received
             id, topic_len, msg_len = extract_numeric_values(response)
@@ -345,8 +343,8 @@ class MQTTClient:
         Check for a message to be received.
         """
         if self.modem.in_waiting > 0:
-            msg = self.modem.read(self.modem.in_waiting)
-            self.cb(msg)
+            msg = self.modem.readline()
+            self.handle_unsolicited_response(msg)
 
 # Received messages from subscriptions will be delivered to this callback
 def sub_cb(topic, msg):
@@ -370,6 +368,12 @@ def test():
     # Subscribe to a topic
     client.set_callback(sub_cb)
     client.subscribe(b"BWtest/topic", qos=1)
+
+    start_time = time.time()
+    while time.time() - start_time < 10:
+        client.check_msg()
+        time.sleep(1)
+
     client.unsubscribe(b"BWtest/topic")
 
     # Disconnect and stop MQTT
