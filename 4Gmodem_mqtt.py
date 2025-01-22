@@ -90,7 +90,6 @@ class MQTTClient:
             word = b""
             char = self.modem.read(1)
             complete_line = char # bytes type
-            #print(char.decode(), end="")
             if b'>' == char:
                 if payload:
                     self.modem.write(payload)
@@ -99,21 +98,17 @@ class MQTTClient:
             elif char == b'+':
                 # get word
                 char = self.modem.read(1)
-                #print(char.decode(), end="")
                 while char.isalpha():
                     word += char
                     char = self.modem.read(1)
-                    #print(char.decode(), end="")
                 if word.decode() == command:
                     # Solicited response
                     result = self.modem.readline()
                     char = b'\n'
-                    #print("Solicited response", result.decode(), end="")
                     complete_line += word + result
                 else:
                     # Unsolicited response
                     complete_line += word + char + self.modem.readline()
-                    #print("Unsolicited response", complete_line.decode(), end="")
                     self.handle_unsolicited_response(complete_line)
                     pass
                 # get rest of line
@@ -123,7 +118,6 @@ class MQTTClient:
                 while char.isalpha():
                     word += char
                     char = self.modem.read(1)
-                    #print(char.decode(), end="")
                 complete_line = word + char + self.modem.readline()
                 if word == b'ERROR':
                     response = False
@@ -161,9 +155,6 @@ class MQTTClient:
                             return result_handler(result.strip())
                     else:
                         return 0
-            else:
-                # Wait for the next line
-                pass
 
     def handle_unsolicited_response(self, response):
         """
@@ -176,11 +167,9 @@ class MQTTClient:
         payload = b''
         response = response.decode().strip()
         print(response)
-        #assert response.startswith('+') # Unsolicited responses should start with '+'
         if response.startswith('+CMQTTRXSTART:'):
             # MQTT message received
             id, topic_total_len, payload_total_len = extract_numeric_values(response)
-            #print(F"MQTT message received: id={id}, topic_len={topic_total_len}, msg_len={payload_total_len}")
 
             while True:
                 response = self.modem.readline().decode().strip()
@@ -188,13 +177,11 @@ class MQTTClient:
                 if response.startswith('+CMQTTRXTOPIC:'):
                     # MQTT message received
                     id, topic_sub_len = extract_numeric_values(response)
-                    #print(F"MQTT topic received: id={id}, topic_len={topic_sub_len}")
                     topic += self.modem.read(topic_sub_len)
                     topic_total_len -= topic_sub_len
                     print(topic.decode(), end="")
                 elif response.startswith('+CMQTTRXPAYLOAD:'):
                     id, payload_sub_len = extract_numeric_values(response)
-                    #print(F"MQTT payload received: id={id}, payload_len={payload_sub_len}")
                     payload += self.modem.read(payload_sub_len)
                     payload_total_len -= payload_sub_len
                     print(payload.decode(), end="")
@@ -321,7 +308,6 @@ class MQTTClient:
         assert self.cb != None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        #print(f'subscribing to {topic}')
         self._send_at_command('CMQTTSUB', f'={self.client_index},{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
     def unsubscribe(self, topic, qos=0):
@@ -334,7 +320,6 @@ class MQTTClient:
         assert self.cb != None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        #print(f'unsubscribing from {topic}')
         self._send_at_command('CMQTTUNSUB', f'={self.client_index},{len(topic)},1', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
     def wait_msg(self):
