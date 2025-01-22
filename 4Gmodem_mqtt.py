@@ -85,7 +85,7 @@ class MQTTClient:
                 while char.isalpha():
                     word += char
                     char = self.modem.read(1)
-                    print(char.decode(), end="")
+                    #print(char.decode(), end="")
                 if word.decode() == command:
                     # Solicited response
                     result = self.modem.readline()
@@ -95,6 +95,8 @@ class MQTTClient:
                 else:
                     # Unsolicited response
                     complete_line += word + char + self.modem.readline()
+                    print("Unsolicited response", complete_line.decode(), end="")
+                    self.handle_unsolicited_response(complete_line.decode())
                     pass
                 # get rest of line
                 pass
@@ -144,6 +146,15 @@ class MQTTClient:
             else:
                 # Wait for the next line
                 pass
+
+    def handle_unsolicited_response(self, response):
+        """
+        Handle an unsolicited response from the modem.
+
+        Args:
+            response (str): The unsolicited response from the modem.
+        """
+        print(response)
 
     def connect(self, apn="iot.1nce.net", clean_session = True, timeout = 2): # ToDO: default timeout should be 0
         """
@@ -263,7 +274,7 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         print(f'subscribing to {topic}')
-        self._send_at_command('CMQTTSUB', f'={self.client_index},{len(topic)},{qos}', payload=topic)  # Subscribe to the topic
+        self._send_at_command('CMQTTSUB', f'={self.client_index},{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
     def unsubscribe(self, topic, qos=0):
         """
@@ -276,7 +287,7 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         print(f'unsubscribing from {topic}')
-        self._send_at_command('CMQTTUNSUB', f'={self.client_index},{len(topic)},1', payload=topic)  # Subscribe to the topic
+        self._send_at_command('CMQTTUNSUB', f'={self.client_index},{len(topic)},1', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
     def wait_msg(self):
         """
@@ -308,8 +319,8 @@ def test():
 
     # Subscribe to a topic
     client.set_callback(lambda msg: print(msg))
-#    client.subscribe(b"BWtest/topic", qos=1)
-#    client.unsubscribe(b"BWtest/topic")
+    client.subscribe(b"BWtest/topic", qos=1)
+    client.unsubscribe(b"BWtest/topic")
 
     # Disconnect and stop MQTT
     client.disconnect()
