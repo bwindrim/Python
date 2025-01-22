@@ -1,6 +1,26 @@
 import serial
 import time
 
+def extract_numeric_values(response):
+    """
+    Extracts up to three numeric values from a string of the form "+CMQTTRXSTART: 0,12,44".
+
+    Args:
+        response (str): The input string.
+
+    Returns:
+        tuple: A tuple containing the extracted integers (up to three).
+    """
+    try:
+        # Split the string by ':' and then by ','
+        parts = response.split(':')[1].split(',')
+        # Convert the parts to integers and limit to 3 values
+        values = tuple(map(int, parts[:3]))
+        return values
+    except (IndexError, ValueError) as e:
+        raise ValueError(f"Invalid response format: {response}") from e
+
+
 class MQTTClient:
     def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=60, ssl=False, ssl_params={}):
         """
@@ -95,8 +115,8 @@ class MQTTClient:
                 else:
                     # Unsolicited response
                     complete_line += word + char + self.modem.readline()
-                    print("Unsolicited response", complete_line.decode(), end="")
-                    self.handle_unsolicited_response(complete_line.decode())
+                    #print("Unsolicited response", complete_line.decode(), end="")
+                    self.handle_unsolicited_response(complete_line)
                     pass
                 # get rest of line
                 pass
@@ -154,7 +174,32 @@ class MQTTClient:
         Args:
             response (str): The unsolicited response from the modem.
         """
-        print(response)
+        topic = None
+        payload = None
+        response = response.decode().strip()
+        print(response, end="")
+        assert response.startswith('+') # Unsolicited responses should start with '+'
+        if response.startswith('+CMQTTRXSTART:'):
+            # MQTT message received
+            id, topic_len, msg_len = extract_numeric_values(response)
+            print(F"MQTT message received: id={id}, topic_len={topic_len}, msg_len={msg_len}")
+
+            while True:
+                response = self.modem.readline().decode().strip()
+                if response.startswith('+CMQTTRXTOPIC:'):
+                    # MQTT message received
+                    id, topic_len = extract_numeric_values(response)
+                    print(F"MQTT topic received: id={id}, topic_len={topic_len}")
+                    topic = self.modem.read(topic_len)
+                    print(topic)
+                elif response.startswith('+CMQTTRXPAYLOAD:'):
+                    id, payload_len = extract_numeric_values(response)
+                    print(F"MQTT payload received: id={id}, payload_len={payload_len}")
+                    payload = self.modem.read(payload_len)
+                    print(payload)
+                elif response.startswith('+CMQTTRXEND:'):
+                    self.cb(topic, payload)
+                    break
 
     def connect(self, apn="iot.1nce.net", clean_session = True, timeout = 2): # ToDO: default timeout should be 0
         """
@@ -303,6 +348,11 @@ class MQTTClient:
             msg = self.modem.read(self.modem.in_waiting)
             self.cb(msg)
 
+# Received messages from subscriptions will be delivered to this callback
+def sub_cb(topic, msg):
+    print(f'sub_cb({topic}, {msg})')
+
+
 def test():
     # Start MQTT session
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
@@ -318,7 +368,7 @@ def test():
     client.publish(b"BWtest/topic", msg, retain=True)
 
     # Subscribe to a topic
-    client.set_callback(lambda msg: print(msg))
+    client.set_callback(sub_cb)
     client.subscribe(b"BWtest/topic", qos=1)
     client.unsubscribe(b"BWtest/topic")
 
