@@ -91,6 +91,7 @@ class MQTTClient:
                         print("Solicited response", result.decode(), end="")
                     else:
                         # Unsolicited response
+                        line = b'+' + word + char + self.modem.readline()
                         pass
                     # get rest of line
                     pass
