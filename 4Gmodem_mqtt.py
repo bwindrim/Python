@@ -108,7 +108,7 @@ class MQTTClient:
                     # Solicited response
                     result = self.modem.readline()
                     char = b'\n'
-                    print("Solicited response", result.decode(), end="")
+                    #print("Solicited response", result.decode(), end="")
                     complete_line += word + result
                 else:
                     # Unsolicited response
@@ -175,28 +175,29 @@ class MQTTClient:
         topic = b''
         payload = b''
         response = response.decode().strip()
-        print(response, end="")
+        print(response)
         #assert response.startswith('+') # Unsolicited responses should start with '+'
         if response.startswith('+CMQTTRXSTART:'):
             # MQTT message received
             id, topic_total_len, payload_total_len = extract_numeric_values(response)
-            print(F"MQTT message received: id={id}, topic_len={topic_total_len}, msg_len={payload_total_len}")
+            #print(F"MQTT message received: id={id}, topic_len={topic_total_len}, msg_len={payload_total_len}")
 
             while True:
                 response = self.modem.readline().decode().strip()
+                print(response)
                 if response.startswith('+CMQTTRXTOPIC:'):
                     # MQTT message received
                     id, topic_sub_len = extract_numeric_values(response)
-                    print(F"MQTT topic received: id={id}, topic_len={topic_sub_len}")
+                    #print(F"MQTT topic received: id={id}, topic_len={topic_sub_len}")
                     topic += self.modem.read(topic_sub_len)
                     topic_total_len -= topic_sub_len
-                    print(topic)
+                    print(topic.decode(), end="")
                 elif response.startswith('+CMQTTRXPAYLOAD:'):
                     id, payload_sub_len = extract_numeric_values(response)
-                    print(F"MQTT payload received: id={id}, payload_len={payload_sub_len}")
+                    #print(F"MQTT payload received: id={id}, payload_len={payload_sub_len}")
                     payload += self.modem.read(payload_sub_len)
                     payload_total_len -= payload_sub_len
-                    print(payload)
+                    print(payload.decode(), end="")
                 elif response.startswith('+CMQTTRXEND:'):
                     assert topic_total_len == 0
                     assert payload_total_len == 0
@@ -320,7 +321,7 @@ class MQTTClient:
         assert self.cb != None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        print(f'subscribing to {topic}')
+        #print(f'subscribing to {topic}')
         self._send_at_command('CMQTTSUB', f'={self.client_index},{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
     def unsubscribe(self, topic, qos=0):
@@ -333,7 +334,7 @@ class MQTTClient:
         assert self.cb != None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        print(f'unsubscribing from {topic}')
+        #print(f'unsubscribing from {topic}')
         self._send_at_command('CMQTTUNSUB', f'={self.client_index},{len(topic)},1', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
     def wait_msg(self):
@@ -375,7 +376,7 @@ def test():
     client.subscribe(b"BWtest/topic", qos=1)
 
     start_time = time.time()
-    while time.time() - start_time < 10:
+    while time.time() - start_time < 30:
         client.check_msg()
         time.sleep(1)
 
