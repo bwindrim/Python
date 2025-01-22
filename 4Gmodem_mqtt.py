@@ -172,30 +172,34 @@ class MQTTClient:
         Args:
             response (str): The unsolicited response from the modem.
         """
-        topic = None
-        payload = None
+        topic = b''
+        payload = b''
         response = response.decode().strip()
         print(response, end="")
         #assert response.startswith('+') # Unsolicited responses should start with '+'
         if response.startswith('+CMQTTRXSTART:'):
             # MQTT message received
-            id, topic_len, msg_len = extract_numeric_values(response)
-            print(F"MQTT message received: id={id}, topic_len={topic_len}, msg_len={msg_len}")
+            id, topic_total_len, payload_total_len = extract_numeric_values(response)
+            print(F"MQTT message received: id={id}, topic_len={topic_total_len}, msg_len={payload_total_len}")
 
             while True:
                 response = self.modem.readline().decode().strip()
                 if response.startswith('+CMQTTRXTOPIC:'):
                     # MQTT message received
-                    id, topic_len = extract_numeric_values(response)
-                    print(F"MQTT topic received: id={id}, topic_len={topic_len}")
-                    topic = self.modem.read(topic_len)
+                    id, topic_sub_len = extract_numeric_values(response)
+                    print(F"MQTT topic received: id={id}, topic_len={topic_sub_len}")
+                    topic += self.modem.read(topic_sub_len)
+                    topic_total_len -= topic_sub_len
                     print(topic)
                 elif response.startswith('+CMQTTRXPAYLOAD:'):
-                    id, payload_len = extract_numeric_values(response)
-                    print(F"MQTT payload received: id={id}, payload_len={payload_len}")
-                    payload = self.modem.read(payload_len)
+                    id, payload_sub_len = extract_numeric_values(response)
+                    print(F"MQTT payload received: id={id}, payload_len={payload_sub_len}")
+                    payload += self.modem.read(payload_sub_len)
+                    payload_total_len -= payload_sub_len
                     print(payload)
                 elif response.startswith('+CMQTTRXEND:'):
+                    assert topic_total_len == 0
+                    assert payload_total_len == 0
                     self.cb(topic, payload)
                     break
 
