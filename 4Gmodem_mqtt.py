@@ -336,7 +336,8 @@ class MQTTClient:
         """
         Wait for a message to be received.
         """
-        pass
+        msg = self.modem.readline()
+        self.handle_unsolicited_response(msg)
 
     def check_msg(self):
         """
