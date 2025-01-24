@@ -79,14 +79,14 @@ class MQTTClient:
         cmd_str = 'AT+' + command + body +'\r'
         encoded_cmd = cmd_str.encode()
         self.modem.write(encoded_cmd)
-        time.sleep(0.1)  # Small delay to allow modem to process
+        #time.sleep(0.1)  # Small delay to allow modem to process
         
         response = None
         result = None
 
         # Process one line at a time until we get a response
         while True:
-            # Process a line, one character at a time
+            # Process a line, according to its first character
             word = b""
             char = self.modem.read(1)
             complete_line = char # bytes type
@@ -96,7 +96,7 @@ class MQTTClient:
                     #print(payload.decode(), end="")
                     complete_line += payload # + '\n'
             elif char == b'+':
-                # get word
+                # Get word
                 char = self.modem.read(1)
                 while char.isalpha():
                     word += char
@@ -104,17 +104,17 @@ class MQTTClient:
                 if word.decode() == command:
                     # Solicited response
                     result = self.modem.readline()
-                    char = b'\n'
+                    #char = b'\n'
                     complete_line += word + result
                 else:
                     # Unsolicited response
                     complete_line += word + char + self.modem.readline()
                     self.handle_unsolicited_response(complete_line)
                     pass
-                # get rest of line
+                # Get rest of line
                 pass
             elif char.isalpha():
-                # get rest of word
+                # Get rest of word
                 while char.isalpha():
                     word += char
                     char = self.modem.read(1)
@@ -138,19 +138,31 @@ class MQTTClient:
             
             print(complete_line.decode(), end="")
             
-            # Check if we have a response
+            # Check if we have a response from the modem.
             if response is not None:
+                # We have received either an OK or an ERROR from the modem.
                 if response == False:
+                    # There was an explicit ERROR line from the modem,
+                    # so any result must have already been received.
                     if result is None:
+                        # There was no result, so return -1 as a generic error.
                         return -1
                     else:
+                        # We have a result, so pass it to the result handler
+                        # ToDo: What if there is no result handler?
                         print("result =", result_handler(result.strip()))
                         return result_handler(result.strip())
                 else:
+                    # There was an explicit OK from the modem, but we may still have a result
+                    # still to come.
                     if result_handler is not None:
+                        # If the caller provided a result handler then a result is expected.
                         if result is None:
+                            # So we need to wait for the result
                             pass
                         else:
+                            # We already have the result, so pass it to the
+                            # result handler and return *its* result.
                             print("result =", result_handler(result.strip()))
                             return result_handler(result.strip())
                     else:
@@ -179,12 +191,12 @@ class MQTTClient:
                     id, topic_sub_len = extract_numeric_values(response)
                     topic += self.modem.read(topic_sub_len)
                     topic_total_len -= topic_sub_len
-                    print(topic.decode(), end="")
+                    print(topic.decode(), end="") # ToDo: fix for multipes
                 elif response.startswith('+CMQTTRXPAYLOAD:'):
                     id, payload_sub_len = extract_numeric_values(response)
                     payload += self.modem.read(payload_sub_len)
                     payload_total_len -= payload_sub_len
-                    print(payload.decode(), end="")
+                    print(payload.decode(), end="") # ToDo: fix for multipes
                 elif response.startswith('+CMQTTRXEND:'):
                     assert topic_total_len == 0
                     assert payload_total_len == 0
@@ -310,15 +322,13 @@ class MQTTClient:
         assert 0 < len(topic) <= 1024
         self._send_at_command('CMQTTSUB', f'={self.client_index},{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
-    def unsubscribe(self, topic, qos=0):
+    def unsubscribe(self, topic):
         """
         Unsubscribe from a topic.
 
         Args:
             topic (bytes): The topic to subscribe to. (0 < len(topic) <= 1024)
         """
-        assert self.cb != None
-        assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         self._send_at_command('CMQTTUNSUB', f'={self.client_index},{len(topic)},1', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))  # Subscribe to the topic
 
@@ -343,6 +353,9 @@ def sub_cb(topic, msg):
 
 
 def test():
+    topic1 = b"BWtest/topic"
+    payload1 = b"Hi there yet again, MQTT from SIMCom A7683E!"
+    
     # Start MQTT session
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
@@ -350,22 +363,21 @@ def test():
     client.set_last_will(b"BWtest/lastwill", b"Goodbye, cruel world!", qos=1)
 
     # Connect to MQTT broker
-    client.connect()
+    client.connect(apn="mob.asm.net")
 
     # Publish and be damned
-    msg = b"Hi there yet again, MQTT from SIMCom A7683E!"
-    client.publish(b"BWtest/topic", msg, retain=True)
+    client.publish(topic1, payload1, retain=True)
 
     # Subscribe to a topic
     client.set_callback(sub_cb)
-    client.subscribe(b"BWtest/topic", qos=1)
+    client.subscribe(topic1, qos=1)
 
     start_time = time.time()
     while time.time() - start_time < 30:
         client.check_msg()
         time.sleep(1)
 
-    client.unsubscribe(b"BWtest/topic")
+    client.unsubscribe(topic1)
 
     # Disconnect and stop MQTT
     client.disconnect()
