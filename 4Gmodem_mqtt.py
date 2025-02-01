@@ -191,12 +191,12 @@ class MQTTClient:
                     id, topic_sub_len = extract_numeric_values(response)
                     topic += self.modem.read(topic_sub_len)
                     topic_total_len -= topic_sub_len
-                    print(topic.decode(), end="") # ToDo: fix for multipes
+                    print(topic.decode(), end="") # ToDo: fix for multiples
                 elif response.startswith('+CMQTTRXPAYLOAD:'):
                     id, payload_sub_len = extract_numeric_values(response)
                     payload += self.modem.read(payload_sub_len)
                     payload_total_len -= payload_sub_len
-                    print(payload.decode(), end="") # ToDo: fix for multipes
+                    print(payload.decode(), end="") # ToDo: fix for multiples
                 elif response.startswith('+CMQTTRXEND:'):
                     assert topic_total_len == 0
                     assert payload_total_len == 0
@@ -363,7 +363,8 @@ def test():
     client.set_last_will(b"BWtest/lastwill", b"Goodbye, cruel world!", qos=1)
 
     # Connect to MQTT broker
-    client.connect(apn="mob.asm.net")
+    #client.connect(apn="mob.asm.net")
+    client.connect() # default APN is "iot.1nce.net"
 
     # Publish and be damned
     client.publish(topic1, payload1, retain=True)
@@ -373,7 +374,7 @@ def test():
     client.subscribe(topic1, qos=1)
 
     start_time = time.time()
-    while time.time() - start_time < 30:
+    while time.time() - start_time < 10:
         client.check_msg()
         time.sleep(1)
 
