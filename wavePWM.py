@@ -145,7 +145,8 @@ class PWM:
 
       The change takes affect when the update function is called.
       """
-      length %= self.micros
+      #length %= self.micros
+      length = min(length, self.micros)
 
       self.pL[gpio] = length / self.micros
 
