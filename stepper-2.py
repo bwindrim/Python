@@ -22,6 +22,7 @@
 import sys
 import time
 import pigpio
+from wavePWM import PWM
 
 #import gpiozero
 
@@ -30,8 +31,8 @@ import pigpio
 #GPIO.setmode(GPIO.BCM)
 
 # Connect to pigpiod daemon
-#pig = pigpio.pi()
-pig = pigpio.pi("bullseye32lite")
+pig = pigpio.pi()
+#pig = pigpio.pi("bullseye32lite")
 
 
 # Define GPIO signals to use
@@ -50,14 +51,15 @@ for pin in StepPins:
 
 # Define advanced sequence
 # as shown in manufacturers datasheet
-Seq = [[1,0,0,1],
-       [1,0,0,0],
-       [1,1,0,0],
-       [0,1,0,0],
-       [0,1,1,0],
-       [0,0,1,0],
-       [0,0,1,1],
-       [0,0,0,1]]
+ON = 1
+Seq = [[ON,0,0,ON],
+       [ON,0,0,0],
+       [ON,ON,0,0],
+       [0,ON,0,0],
+       [0,ON,ON,0],
+       [0,0,ON,0],
+       [0,0,ON,ON],
+       [0,0,0,ON]]
        
 StepCount = len(Seq)
 StepDir = -1 # Set to 1 or 2 for clockwise
@@ -65,12 +67,15 @@ StepDir = -1 # Set to 1 or 2 for clockwise
 
 # Read wait time from command line
 if len(sys.argv)>1:
-    WaitTime = int(sys.argv[1])/float(1000)
+  WaitTime = int(sys.argv[1])/float(1000)
 else:
-    WaitTime = 2/float(1000)
+  WaitTime = 10/float(1000)
 
 # Initialise variables
 StepCounter = 0
+
+pwm = PWM(pig) # Use default frequency
+pwm.set_frequency(10000)
 
 try:
     print("Running, WaitTime = ", WaitTime, "s")
@@ -80,13 +85,16 @@ try:
         #print (Seq[StepCounter])
 
         for pin, value in zip(StepPins, Seq[StepCounter]):
-            pig.write(pin, value)
+            pwm.set_pulse_length_in_fraction(pin, value)
+            #pig.write(pin, value)
         #      StepCounter += StepDir
 
         # If we reach the end of the sequence
         # start again
         StepCounter = (StepCounter + StepDir) % StepCount
 
+        pwm.update() # Apply all the changes
+        
         # Wait before moving on
         time.sleep(WaitTime)
 except KeyboardInterrupt:
