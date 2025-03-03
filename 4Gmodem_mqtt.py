@@ -347,10 +347,24 @@ class MQTTClient:
             msg = self.modem.readline()
             self.handle_unsolicited_response(msg)
 
+def upload_cert(client, filename):
+    with open(filename, 'rb') as f:
+        data = f.read()
+        client._send_at_command('CCERTDOWN', f'="{filename}",{len(data)}', payload=data)
+
+
 # Received messages from subscriptions will be delivered to this callback
 def sub_cb(topic, msg):
     print(f'sub_cb({topic}, {msg})')
 
+
+def download():
+    # Start MQTT session
+    ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
+    client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
+    client.connect() # default APN is "iot.1nce.net"
+    upload_cert(client, 'isrgrootx1.pem')
+    client.disconnect()
 
 def test():
     topic1 = b"BWtest/topic"
