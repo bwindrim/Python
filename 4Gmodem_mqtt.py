@@ -200,7 +200,10 @@ class MQTTClient:
                 elif response.startswith('+CMQTTRXEND:'):
                     assert topic_total_len == 0
                     assert payload_total_len == 0
-                    self.cb(topic, payload)
+                    if self.cb:
+                        self.cb(topic, payload)
+                    else:
+                        print(f"Received message for {topic}: {payload}")
                     break
 
     def connect(self, apn="iot.1nce.net", clean_session = True, timeout = 2): # ToDO: default timeout should be 0
@@ -368,7 +371,7 @@ def download():
 
 def test():
     topic1 = b"BWtest/topic"
-    payload1 = b"Hi there yet again, MQTT from SIMCom A7683E!"
+    payload1 = b"Raspberry Pi Python, MQTT from SIMCom A7683E!"
     
     # Start MQTT session
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
@@ -381,16 +384,19 @@ def test():
     client.connect() # default APN is "iot.1nce.net"
 
     # Publish and be damned
-    client.publish(topic1, payload1, retain=True)
+    client.publish(topic1, payload1, retain=True, qos=1)
 
     # Subscribe to a topic
     client.set_callback(sub_cb)
     client.subscribe(topic1, qos=1)
 
-    start_time = time.time()
-    while time.time() - start_time < 10:
-        client.check_msg()
-        time.sleep(1)
+    try:
+        start_time = time.time()
+        while True: #time.time() - start_time < 10:
+            client.check_msg()
+            time.sleep(1)
+    except KeyboardInterrupt:
+        pass
 
     client.unsubscribe(topic1)
 
