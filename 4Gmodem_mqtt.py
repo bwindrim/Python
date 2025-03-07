@@ -1,5 +1,6 @@
 import serial
 import time
+from datetime import datetime
 
 def extract_numeric_values(response):
     """
@@ -371,6 +372,7 @@ def download():
 
 def test():
     topic1 = b"BWtest/topic"
+    topic2 = b"BWtest/timestamp"
     payload1 = b"Raspberry Pi Python, MQTT from SIMCom A7683E!"
     
     # Start MQTT session
@@ -383,18 +385,26 @@ def test():
     #client.connect(apn="mob.asm.net")
     client.connect() # default APN is "iot.1nce.net"
 
-    # Publish and be damned
-    client.publish(topic1, payload1, retain=True, qos=1)
-
     # Subscribe to a topic
     client.set_callback(sub_cb)
     client.subscribe(topic1, qos=1)
 
     try:
-        start_time = time.time()
-        while True: #time.time() - start_time < 10:
-            client.check_msg()
-            time.sleep(1)
+        while True:
+            # Get the current date and time
+            now = datetime.now()
+
+            # Format the date and time as a string
+            payload2 = f'Pi Python at: {now.strftime("%Y-%m-%d %H:%M:%S")}'
+
+            # Publish and be damned
+            client.publish(topic2, payload2.encode(encoding="utf-8"), retain=True, qos=1)
+
+            start_time = time.time()
+            wait_interval = 15*60  # 15 minutes
+            while time.time() - start_time < wait_interval:
+                client.check_msg()
+                time.sleep(1)
     except KeyboardInterrupt:
         pass
 
