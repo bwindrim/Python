@@ -27,7 +27,7 @@ def on_message(client, userdata, message):
     if message.retain:
         print(" (retained)")
     else:
-        print(" (live)")
+        print("")
 
 def on_log(client, userdata, level, buf):
     #print("log: ",buf)
@@ -43,11 +43,12 @@ client = mqtt.Client(client_name)
 client.on_message=on_message
 client.on_log=on_log
 client.connect(broker_name)
-    
-list_subscribe("birdboxes","birdbox1", bb_subscribe_list)
-list_subscribe("birdboxes","birdbox3", bb_subscribe_list)
-list_subscribe("birdboxes","testbed", bb_subscribe_list)
+client.subscribe("birdboxes/#")
 
-client.publish("birdboxes/testbed/force_up", "1")
+#list_subscribe("birdboxes","birdbox1", bb_subscribe_list)
+#list_subscribe("birdboxes","birdbox3", bb_subscribe_list)
+# list_subscribe("birdboxes","testbed", bb_subscribe_list)
+
+# client.publish("birdboxes/testbed/force_up", "1")
 
 client.loop_forever()
