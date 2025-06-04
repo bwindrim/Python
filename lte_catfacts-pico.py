@@ -5,22 +5,18 @@ Get yourself a cat fact over 4G!
 import lte
 import time
 import requests
-from machine import Pin, PWM, UART
+from machine import Pin, UART
 
 MOBILE_APN = "iot.1nce.net"
 
-# Fix the eye-searing brightness of the onboard LED with PWM
-class Netlight:
-    def __init__(self):
-        self.pin = PWM(Pin("LED", Pin.OUT), freq=1000)
+# Initialize the LTE connection
+con = lte.LTE(MOBILE_APN,
+              uart=UART(0, tx=Pin(16, Pin.OUT), rx=Pin(17, Pin.IN)),
+              reset_pin=Pin(18, Pin.OUT),
+              netlight_pin=Pin(19, Pin.IN),
+              netlight_led=Pin(25, Pin.OUT)
+              )
 
-    def value(self, value):
-        self.pin.duty_u16(value * 2000)
-
-
-con = lte.LTE(MOBILE_APN, uart=UART(0, tx=Pin(16, Pin.OUT), rx=Pin(17, Pin.IN)), reset_pin=Pin(18, Pin.OUT), netlight_pin=Pin(19, Pin.IN),
-netlight_led=Netlight())
-#con = lte.LTE(MOBILE_APN)
 con.start_ppp()
 
 try:
