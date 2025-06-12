@@ -52,7 +52,7 @@ class AsyncMQTTClient:
                 if b'>' in line:
                     self.writer.write(payload)
                     await self.writer.drain()
-                    breaks
+                    break
         # Read response lines
         while True:
             line = await self.reader.readline()
@@ -61,7 +61,9 @@ class AsyncMQTTClient:
             #print(f'> {line}')
             decoded = line.decode(errors="ignore").strip()
             print(f'> {decoded}')
-            if decoded.startswith('+CMQTTRXSTART:'):
+            if decoded == cmd_str.strip():
+                continue # Skip the command echo
+            elif decoded.startswith('+CMQTTRXSTART:'):
                 # Handle unsolicited response
                 await self.handle_unsolicited_response(decoded)
             elif decoded == 'OK':
@@ -70,9 +72,10 @@ class AsyncMQTTClient:
                 return -1
             elif result_handler:
                 try:
+                    print(f"Result handler for {command} with line: {line.strip()}")
                     return result_handler(line.strip())
                 except Exception as e:
-                    print(f"Result handler exception: {e}")
+                    print(f"Result handler exception: {e} line = {line.strip()}")
                     return None
 
     async def handle_unsolicited_response(self, response):
@@ -196,7 +199,7 @@ async def test():
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = AsyncMQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port=8883, user="oisl_brian", password="Oisl2023", ssl=True, ssl_params=ssl_params)
     await client.connect_serial()
-    client.set_last_will(b"BWtest/lastwill", b"Pi Python connection broken", qos=1)
+    #client.set_last_will(b"BWtest/lastwill", b"Pi Python connection broken", qos=1)
     await client.connect()
     client.set_callback(sub_cb)
     await client.subscribe(topic1, qos=1)
