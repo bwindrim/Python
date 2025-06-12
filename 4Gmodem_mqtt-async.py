@@ -47,13 +47,10 @@ class AsyncMQTTClient:
         await self.writer.drain()
         # If payload is needed, wait for '>' prompt
         if payload:
-            # Read one byte at a time until '>' is seen
-            while True:
-                char = await self.reader.read(1)
-                if char == b'':
-                    raise EOFError("Serial connection closed while waiting for '>' prompt")
-                if char == b'>':
-                    break
+            # Read until the '>' prompt is seen
+            prompt = await self.reader.readuntil(b'>')
+            if not prompt.endswith(b'>'):
+                raise EOFError("Serial connection closed or prompt not found while waiting for '>' prompt")
             self.writer.write(payload)
             await self.writer.drain()
         # Read response lines
