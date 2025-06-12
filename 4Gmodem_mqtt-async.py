@@ -47,12 +47,15 @@ class AsyncMQTTClient:
         await self.writer.drain()
         # If payload is needed, wait for '>' prompt
         if payload:
+            # Read one byte at a time until '>' is seen
             while True:
-                line = await self.reader.readline()
-                if b'>' in line:
-                    self.writer.write(payload)
-                    await self.writer.drain()
+                char = await self.reader.read(1)
+                if char == b'':
+                    raise EOFError("Serial connection closed while waiting for '>' prompt")
+                if char == b'>':
                     break
+            self.writer.write(payload)
+            await self.writer.drain()
         # Read response lines
         while True:
             line = await self.reader.readline()
@@ -199,7 +202,7 @@ async def test():
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = AsyncMQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port=8883, user="oisl_brian", password="Oisl2023", ssl=True, ssl_params=ssl_params)
     await client.connect_serial()
-    #client.set_last_will(b"BWtest/lastwill", b"Pi Python connection broken", qos=1)
+    client.set_last_will(b"BWtest/lastwill", b"Pi Python connection broken", qos=1)
     await client.connect()
     client.set_callback(sub_cb)
     await client.subscribe(topic1, qos=1)
