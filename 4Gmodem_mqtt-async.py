@@ -88,7 +88,7 @@ class AsyncMQTTClient:
         # Check for ERROR response
         if line == "ERROR":
             if result:
-                raise ValueError(f"Command {command} failed with result: {result}")
+                raise ValueError(f"Command {command} failed with result: {result}", result)
             else:
                 raise ValueError(f"Command {command} failed with ERROR response")
         # Check for OK response
@@ -101,7 +101,7 @@ class AsyncMQTTClient:
                 try:
                     result = result_handler(line) # stash the result
                     if result != 0:
-                        raise ValueError(f"Command {command} failed with result: {result}")
+                        raise ValueError(f"Command {command} failed with result: {result}", result)
                 except Exception as e:
                     print(f"Result handler exception: {e} line = {line}")
                     raise e
@@ -150,20 +150,32 @@ class AsyncMQTTClient:
         self.timeout = timeout
         await self._send_at_command('CGDCONT', f'=1,"IP","{apn}"')
         await self._send_at_command('CGACT', f'=1,1')
-        await self._send_at_command('CMQTTSTART', result_handler=lambda s: int(extract_numeric_values(s)[0]))
-        await self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
-        if self.use_ssl:
-            await self._send_at_command('CSSLCFG', f'="sslversion",1,{self.ssl_version}')
-            await self._send_at_command('CSSLCFG', f'="authmode",1,{self.auth_mode}')
-            await self._send_at_command('CSSLCFG', f'="ignorelocaltime",1,{int(self.ignore_local_time)}')
-            await self._send_at_command('CSSLCFG', f'="cacert",1,"{self.ca_cert}"')
-            await self._send_at_command('CSSLCFG', f'="enableSNI",1,{int(self.enable_SNI)}')
-            await self._send_at_command('CMQTTSSLCFG', f'=0,1')
-        if self.lw_topic:
-            await self._send_at_command('CMQTTWILLTOPIC', f'=0,{len(self.lw_topic)}', payload=self.lw_topic)
-            await self._send_at_command('CMQTTWILLMSG', f'=0,{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)
-        await self._send_at_command('CMQTTCONNECT', f'=0,"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}',
-                                   result_handler=lambda s: int(extract_numeric_values(s)[1]))
+        try:
+            await self._send_at_command('CMQTTSTART', result_handler=lambda s: int(extract_numeric_values(s)[0]))
+            await self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
+            if self.use_ssl:
+                await self._send_at_command('CSSLCFG', f'="sslversion",1,{self.ssl_version}')
+                await self._send_at_command('CSSLCFG', f'="authmode",1,{self.auth_mode}')
+                await self._send_at_command('CSSLCFG', f'="ignorelocaltime",1,{int(self.ignore_local_time)}')
+                await self._send_at_command('CSSLCFG', f'="cacert",1,"{self.ca_cert}"')
+                await self._send_at_command('CSSLCFG', f'="enableSNI",1,{int(self.enable_SNI)}')
+                await self._send_at_command('CMQTTSSLCFG', f'=0,1')
+            if self.lw_topic:
+                await self._send_at_command('CMQTTWILLTOPIC', f'=0,{len(self.lw_topic)}', payload=self.lw_topic)
+                await self._send_at_command('CMQTTWILLMSG', f'=0,{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)
+        except ValueError as e:
+            # An immediate ERROR from CMQTTSTSTART or CMQTTACCQ implies that we're already connected.
+            # ToDo: we should really stop and restart, in case the client ID has changed.
+            if len(e.args) != 1:
+                raise e
+        try:
+            await self._send_at_command('CMQTTCONNECT', f'=0,"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}',
+                                    result_handler=lambda s: int(extract_numeric_values(s)[1]))
+        except ValueError as e:
+            # An error code of 19 from CMQTTCONNECT means "Already connected", so we can ignore it
+            # ToDo: we should really disconnect and reconnect.
+            if 19 != e.args[1]:
+                raise e
         self.connected = True
         return False
 
