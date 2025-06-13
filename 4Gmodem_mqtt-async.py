@@ -61,23 +61,17 @@ class AsyncMQTTClient:
         assert echo == cmd_str.strip() # Ensure we got the echoed command back
         # If payload is needed, wait for '>' prompt
         if payload:
-            # Read one byte at a time until '>' is seen
-            while True:
-                char = await self.reader.read(1)
-                if char == b'':
-                    raise EOFError("Serial connection closed while waiting for '>' prompt")
-                if char == b'>':
-                    break
-                else:
-                    print(char.decode(errors="ignore"), end="")
-            # Now send the payload
-            self.writer.write(payload)
-            await self.writer.drain()
+            # Read until the '>' prompt is seen
+            prompt = await self.reader.readuntil(b'>')
+            if not prompt.endswith(b'>'):
+                raise EOFError("Serial connection closed or prompt not found while waiting for '>' prompt")
+            self.writer.write(payload) # now send the payload
+            await self.writer.drain() # Ensure the payload is sent
         result = None
         # Read response lines
         line = await self._readline_stripped() # Read the first response line
         assert line != "" # Ensure we got a response
-        # Check for an early result
+        # Check for an early result, i.e. one that preceeds the OK or ERROR response
         if line.startswith('+' + command + ':'):
             # Early result, may be for OK or ERROR
             result = result_handler(line) # stash the result
@@ -117,7 +111,7 @@ class AsyncMQTTClient:
             while True:
                 line = await self.reader.readline()
                 decoded = line.decode(errors="ignore").strip()
-                print(decoded)
+                print(f'Rx: {decoded}')
                 if decoded.startswith('+CMQTTRXTOPIC:'):
                     id, topic_sub_len = extract_numeric_values(decoded)
                     topic += await self.reader.readexactly(topic_sub_len)
