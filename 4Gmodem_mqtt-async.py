@@ -37,9 +37,6 @@ class AsyncMQTTClient:
         self.reader = None
         self.writer = None
 
-    async def connect_serial(self, port='/dev/ttyAMA0', baudrate=115200):
-        self.reader, self.writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baudrate)
-
     async def _readline_stripped(self):
         """
         Read a line from the serial reader, handle EOF, and return the stripped string.
@@ -107,7 +104,7 @@ class AsyncMQTTClient:
                     raise e
             return result
         # Handle unsolicited responses
-        if line.startswith('+CMQTTRXSTART:'):
+        if line.startswith('+'):
             # Handle unsolicited response
             await self._handle_unsolicited_response(line)
 
@@ -140,7 +137,7 @@ class AsyncMQTTClient:
                         print(f"Received message for {topic}: {payload}")
                     break
 
-    async def connect(self, apn="iot.1nce.net", clean_session=True, timeout=2):
+    async def connect(self, apn="iot.1nce.net", clean_session=True, timeout=2, port='/dev/ttyAMA0', baudrate=115200):
         credentials = ''
         if self.user:
             if self.password:
@@ -148,6 +145,7 @@ class AsyncMQTTClient:
             else:
                 credentials = f',"{self.user}"'
         self.timeout = timeout
+        self.reader, self.writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baudrate) # Connect to the serial port
         await self._send_at_command('CGDCONT', f'=1,"IP","{apn}"')
         await self._send_at_command('CGACT', f'=1,1')
         try:
@@ -243,7 +241,6 @@ async def test():
     topic2 = b"BWtest/timestamp"
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = AsyncMQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port=8883, user="oisl_brian", password="Oisl2023", ssl=True, ssl_params=ssl_params)
-    await client.connect_serial()
     client.set_last_will(b"BWtest/lastwill", b"Pi Python connection broken", qos=1)
     await client.connect()
     client.set_callback(sub_cb)
