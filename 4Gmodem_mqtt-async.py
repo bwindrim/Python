@@ -93,25 +93,19 @@ class AsyncMQTTClient:
                 raise ValueError(f"Command {command} failed with ERROR response")
         # Check for OK response
         if line == 'OK':
-            if result_handler: # we're expecting an explicit result
-                if result:
-                    return result
-                else:
-                    # assume that the result will come in the next line
-                    line = await self._readline_stripped()  # get next line
-                    assert line.startswith('+' + command + ':')
-                    # Late result, only for OK
-                    try:
-                        result = result_handler(line) # stash the result
-                        if result != 0:
-                            raise ValueError(f"Command {command} failed with result: {result}")
-                    except Exception as e:
-                        print(f"Result handler exception: {e} line = {line}")
-                        raise e
-                    return result
-            else:
-                # No result handler, just return None
-                return None
+            if result_handler and result is None: # we're still expecting an explicit result
+                # Assume that the result will come in the next line
+                line = await self._readline_stripped()  # get next line
+                assert line.startswith('+' + command + ':')
+                # Late result, only for OK
+                try:
+                    result = result_handler(line) # stash the result
+                    if result != 0:
+                        raise ValueError(f"Command {command} failed with result: {result}")
+                except Exception as e:
+                    print(f"Result handler exception: {e} line = {line}")
+                    raise e
+            return result
         # Handle unsolicited responses
         if line.startswith('+CMQTTRXSTART:'):
             # Handle unsolicited response

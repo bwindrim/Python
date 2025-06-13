@@ -405,7 +405,7 @@ def test():
 
             # Publish and be damned
             client.publish(topic2, payload2.encode(encoding="utf-8"), retain=True, qos=1)
-
+            break
             start_time = time.time()
             wait_interval = 15*60  # 15 minutes
             while time.time() - start_time < wait_interval:
