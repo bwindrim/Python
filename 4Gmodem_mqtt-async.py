@@ -59,7 +59,9 @@ class AsyncMQTTClient:
         cmd_str = 'AT+' + command + body + '\r'
         print(f'Tx: {cmd_str}')
         self.writer.write(cmd_str.encode())
-        await self.writer.drain()
+        await self.writer.drain() # Ensure the command is sent
+        echo = await self._readline_stripped() # Read the echoed command
+        assert echo == cmd_str.strip() # Ensure we got the echoed command back
         # If payload is needed, wait for '>' prompt
         if payload:
             # Read one byte at a time until '>' is seen
@@ -76,27 +78,26 @@ class AsyncMQTTClient:
             await self.writer.drain()
         result = None
         # Read response lines
-        echo = await self._readline_stripped() # Read the echoed command
-        assert echo == cmd_str.strip() # Ensure we got the expected echo
         line = await self._readline_stripped() # Read the first response line
         assert line != "" # Ensure we got a response
-
+        # Check for an early result
         if line.startswith('+' + command + ':'):
             # Early result, may be for OK or ERROR
             result = result_handler(line) # stash the result
             line = await self._readline_stripped() # get next line
-
+        # Check for ERROR response
         if line == "ERROR":
             if result:
                 raise ValueError(f"Command {command} failed with result: {result}")
             else:
                 raise ValueError(f"Command {command} failed with ERROR response")
-        
+        # Check for OK response
         if line == 'OK':
             if result_handler: # we're expecting an explicit result
                 if result:
                     return result
                 else:
+                    # assume that the result will come in the next line
                     line = await self._readline_stripped()  # get next line
                     assert line.startswith('+' + command + ':')
                     # Late result, only for OK
@@ -108,12 +109,15 @@ class AsyncMQTTClient:
                         print(f"Result handler exception: {e} line = {line}")
                         raise e
                     return result
-
+            else:
+                # No result handler, just return None
+                return None
+        # Handle unsolicited responses
         if line.startswith('+CMQTTRXSTART:'):
             # Handle unsolicited response
-            await self.handle_unsolicited_response(line)
+            await self._handle_unsolicited_response(line)
 
-    async def handle_unsolicited_response(self, response):
+    async def _handle_unsolicited_response(self, response):
         topic = b''
         payload = b''
         print(f'Unsolicited: {response}')
@@ -152,7 +156,7 @@ class AsyncMQTTClient:
         self.timeout = timeout
         await self._send_at_command('CGDCONT', f'=1,"IP","{apn}"')
         await self._send_at_command('CGACT', f'=1,1')
-        await self._send_at_command('CMQTTSTART', result_handler=lambda s: int(s))
+        await self._send_at_command('CMQTTSTART', result_handler=lambda s: int(extract_numeric_values(s)[0]))
         await self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
         if self.use_ssl:
             await self._send_at_command('CSSLCFG', f'="sslversion",1,{self.ssl_version}')
@@ -165,13 +169,13 @@ class AsyncMQTTClient:
             await self._send_at_command('CMQTTWILLTOPIC', f'=0,{len(self.lw_topic)}', payload=self.lw_topic)
             await self._send_at_command('CMQTTWILLMSG', f'=0,{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)
         await self._send_at_command('CMQTTCONNECT', f'=0,"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}',
-                                   result_handler=lambda s: int(s.split(b',')[1]))
+                                   result_handler=lambda s: int(extract_numeric_values(s)[1]))
         self.connected = True
         return False
 
     async def disconnect(self):
         if self.connected:
-            await self._send_at_command('CMQTTDISC', f'=0', result_handler=lambda s: int(s.split(b',')[1]))
+            await self._send_at_command('CMQTTDISC', f'=0', result_handler=lambda s: int(extract_numeric_values(s)[1]))
             await self._send_at_command('CMQTTREL', f'=0')
             await self._send_at_command('CMQTTSTOP', result_handler=lambda s: int(s))
             await self._send_at_command('CGACT', f'=0,1')
@@ -199,17 +203,17 @@ class AsyncMQTTClient:
         assert 0 < len(msg) <= 10240
         await self._send_at_command('CMQTTTOPIC', f'=0,{len(topic)}', payload=topic)
         await self._send_at_command('CMQTTPAYLOAD', f'=0,{len(msg)}', payload=msg)
-        await self._send_at_command('CMQTTPUB', f'=0,{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: int(s.split(b',')[1]))
+        await self._send_at_command('CMQTTPUB', f'=0,{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: int(extract_numeric_values(s)[1]))
 
     async def subscribe(self, topic, qos=0):
         assert self.cb is not None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        await self._send_at_command('CMQTTSUB', f'=0,{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))
+        await self._send_at_command('CMQTTSUB', f'=0,{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(extract_numeric_values(s)[1]))
 
     async def unsubscribe(self, topic):
         assert 0 < len(topic) <= 1024
-        await self._send_at_command('CMQTTUNSUB', f'=0,{len(topic)},1', payload=topic, result_handler=lambda s: int(s.split(b',')[1]))
+        await self._send_at_command('CMQTTUNSUB', f'=0,{len(topic)},1', payload=topic, result_handler=lambda s: int(extract_numeric_values(s)[1]))
 
     async def check_msg(self):
         # Non-blocking check for messages
