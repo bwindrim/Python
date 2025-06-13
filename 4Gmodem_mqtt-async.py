@@ -40,48 +40,83 @@ class AsyncMQTTClient:
     async def connect_serial(self, port='/dev/ttyAMA0', baudrate=115200):
         self.reader, self.writer = await serial_asyncio.open_serial_connection(url=port, baudrate=baudrate)
 
+    async def _readline_stripped(self):
+        """
+        Read a line from the serial reader, handle EOF, and return the stripped string.
+        Raises EOFError if the connection is closed.
+        """
+        while True:
+            line = await self.reader.readline()
+            if not line:  # EOF
+                raise EOFError("Serial connection closed while reading response")
+            result = line.decode(errors="ignore").strip()
+            print(f'Rx: {result}')
+            if result != "":
+                return result
+
+
     async def _send_at_command(self, command, body="", result_handler=None, payload=None):
         cmd_str = 'AT+' + command + body + '\r'
-        print(f'< {cmd_str}')
+        print(f'Tx: {cmd_str}')
         self.writer.write(cmd_str.encode())
         await self.writer.drain()
         # If payload is needed, wait for '>' prompt
         if payload:
-            # Read until the '>' prompt is seen
-            prompt = await self.reader.readuntil(b'>')
-            if not prompt.endswith(b'>'):
-                raise EOFError("Serial connection closed or prompt not found while waiting for '>' prompt")
+            # Read one byte at a time until '>' is seen
+            while True:
+                char = await self.reader.read(1)
+                if char == b'':
+                    raise EOFError("Serial connection closed while waiting for '>' prompt")
+                if char == b'>':
+                    break
+                else:
+                    print(char.decode(errors="ignore"), end="")
+            # Now send the payload
             self.writer.write(payload)
             await self.writer.drain()
+        result = None
         # Read response lines
-        while True:
-            line = await self.reader.readline()
-            if not line:
-                break
-            #print(f'> {line}')
-            decoded = line.decode(errors="ignore").strip()
-            print(f'> {decoded}')
-            if decoded == cmd_str.strip():
-                continue # Skip the command echo
-            elif decoded.startswith('+CMQTTRXSTART:'):
-                # Handle unsolicited response
-                await self.handle_unsolicited_response(decoded)
-            elif decoded == 'OK':
-                return 0
-            elif decoded == 'ERROR':
-                return -1
-            elif result_handler:
-                try:
-                    print(f"Result handler for {command} with line: {line.strip()}")
-                    return result_handler(line.strip())
-                except Exception as e:
-                    print(f"Result handler exception: {e} line = {line.strip()}")
-                    return None
+        echo = await self._readline_stripped() # Read the echoed command
+        assert echo == cmd_str.strip() # Ensure we got the expected echo
+        line = await self._readline_stripped() # Read the first response line
+        assert line != "" # Ensure we got a response
+
+        if line.startswith('+' + command + ':'):
+            # Early result, may be for OK or ERROR
+            result = result_handler(line) # stash the result
+            line = await self._readline_stripped() # get next line
+
+        if line == "ERROR":
+            if result:
+                raise ValueError(f"Command {command} failed with result: {result}")
+            else:
+                raise ValueError(f"Command {command} failed with ERROR response")
+        
+        if line == 'OK':
+            if result_handler: # we're expecting an explicit result
+                if result:
+                    return result
+                else:
+                    line = await self._readline_stripped()  # get next line
+                    assert line.startswith('+' + command + ':')
+                    # Late result, only for OK
+                    try:
+                        result = result_handler(line) # stash the result
+                        if result != 0:
+                            raise ValueError(f"Command {command} failed with result: {result}")
+                    except Exception as e:
+                        print(f"Result handler exception: {e} line = {line}")
+                        raise e
+                    return result
+
+        if line.startswith('+CMQTTRXSTART:'):
+            # Handle unsolicited response
+            await self.handle_unsolicited_response(line)
 
     async def handle_unsolicited_response(self, response):
         topic = b''
         payload = b''
-        print(response)
+        print(f'Unsolicited: {response}')
         if response.startswith('+CMQTTRXSTART:'):
             id, topic_total_len, payload_total_len = extract_numeric_values(response)
             while True:
@@ -208,7 +243,9 @@ async def test():
         while True:
             now = datetime.now()
             payload2 = f'Pi Python at: {now.strftime("%Y-%m-%d %H:%M:%S")}'
+            print(f'Publishing to {topic2}: {payload2}')
             await client.publish(topic2, payload2.encode("utf-8"), retain=True, qos=1)
+            print("Publish done")
             start_time = asyncio.get_event_loop().time()
             wait_interval = 15 * 60
             while asyncio.get_event_loop().time() - start_time < wait_interval:
