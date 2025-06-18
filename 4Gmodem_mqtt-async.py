@@ -53,12 +53,42 @@ class AsyncMQTTClient:
 
 
     async def _send_at_command(self, command, body="", result_handler=None, payload=None):
+        """ Send an AT command to the modem and handle the response.
+        Args:
+            command (str): The AT command to send (without 'AT+' prefix).
+            body (str): The body of the command, if any.
+            result_handler (callable): A function to handle the result line.
+            payload (bytes): Optional payload to send after the command.
+        Returns:
+            The result of the command, if any.
+        Raises:
+            ValueError: If the command fails with an ERROR response.
+            EOFError: If the connection is closed while reading the response.
+        """
+        # Construct the AT command string and send it.
         cmd_str = 'AT+' + command + body + '\r'
         print(f'Tx: {cmd_str}')
         self.writer.write(cmd_str.encode())
         await self.writer.drain() # Ensure the command is sent
-        echo = await self._readline_stripped() # Read the echoed command
-        assert echo == cmd_str.strip() # Ensure we got the echoed command back
+
+        # We've sent the command, now we wait for the echo. However,
+        # we may not get an echo if the command is not recognized and
+        # some commands may not echo back.
+        # In addition, we may receive unsolicited responses before the echo.
+        while True:
+            line = await self._readline_stripped()
+            if line == cmd_str.strip(): # wait for the command to be echoed back
+                break
+            elif line.startswith('+'): # unsolicited response
+                # Handle unsolicited response
+                await self._handle_unsolicited_response(line)
+            elif line == 'OK' or line == 'ERROR':
+                # If we get OK or ERROR, we can stop waiting for the echo
+                break
+            else:
+                # If we get an unexpected line, we can log it and continue
+                print(f'Unexpected response: {line}')
+
         # If payload is needed, wait for '>' prompt
         if payload:
             # Read until the '>' prompt is seen
@@ -67,6 +97,9 @@ class AsyncMQTTClient:
                 raise EOFError("Serial connection closed or prompt not found while waiting for '>' prompt")
             self.writer.write(payload) # now send the payload
             await self.writer.drain() # Ensure the payload is sent
+
+        # Now we wait for the response
+        # Initialize result to None, it will be set if we get a result
         result = None
         # Read response lines
         line = await self._readline_stripped() # Read the first response line
