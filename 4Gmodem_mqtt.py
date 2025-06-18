@@ -148,11 +148,13 @@ class MQTTClient:
                     if result is None:
                         # There was no result, so return -1 as a generic error.
                         return -1
-                    else:
+                    elif result_handler is not None:
                         # We have a result, so pass it to the result handler
-                        # ToDo: What if there is no result handler?
                         print("result =", result_handler(result.strip()))
                         return result_handler(result.strip())
+                    else:
+                        # No result handler, so return -1 as a generic error.
+                        return -1
                 else:
                     # There was an explicit OK from the modem, but we may still have a result
                     # still to come.
@@ -244,7 +246,12 @@ class MQTTClient:
             self._send_at_command('CSSLCFG', f'="enableSNI",{self.ssl_context},{int(self.enable_SNI)}') # Set Server Name Indication
             self._send_at_command('CMQTTSSLCFG', f'={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
 
-        if self.lw_topic:
+        if self.lw_topic and self.lw_msg:
+            assert 0 < len(self.lw_topic) <= 1024
+            assert 0 < len(self.lw_msg) <= 1024 # note: will message is limited to 1024 bytes
+            assert self.lw_retain == False, "retain=True is not supported by SimCOMM A76xx for last will"
+            assert 0 <= self.lw_qos <= 2
+            # Set last will message
             self._send_at_command('CMQTTWILLTOPIC', f'={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
             self._send_at_command('CMQTTWILLMSG', f'={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
 

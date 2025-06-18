@@ -42,6 +42,8 @@ class AsyncMQTTClient:
         Read a line from the serial reader, handle EOF, and return the stripped string.
         Raises EOFError if the connection is closed.
         """
+        assert self.reader is not None, "Reader is not initialized. Call connect() first."
+        # Read a line from the serial reader
         while True:
             line = await self.reader.readline()
             if not line:  # EOF
@@ -65,6 +67,9 @@ class AsyncMQTTClient:
             ValueError: If the command fails with an ERROR response.
             EOFError: If the connection is closed while reading the response.
         """
+        assert self.reader is not None, "Reader is not initialized. Call connect() first."
+        assert self.writer is not None, "Writer is not initialized. Call connect() first."
+
         # Construct the AT command string and send it.
         cmd_str = 'AT+' + command + body + '\r'
         print(f'Tx: {cmd_str}')
@@ -107,6 +112,8 @@ class AsyncMQTTClient:
         # Check for an early result, i.e. one that preceeds the OK or ERROR response
         if line.startswith('+' + command + ':'):
             # Early result, may be for OK or ERROR
+            if result_handler is None:
+                raise ValueError(f"Command {command} returned a result without a result handler", line)
             result = result_handler(line) # stash the result
             line = await self._readline_stripped() # get next line
         # Check for ERROR response
@@ -138,6 +145,7 @@ class AsyncMQTTClient:
     async def _handle_unsolicited_response(self, response):
         topic = b''
         payload = b''
+        assert self.reader is not None, "Reader is not initialized. Call connect() first."
         print(f'Unsolicited: {response}')
         if response.startswith('+CMQTTRXSTART:'):
             id, topic_total_len, payload_total_len = extract_numeric_values(response)
@@ -163,6 +171,25 @@ class AsyncMQTTClient:
                     else:
                         print(f"Received message for {topic}: {payload}")
                     break
+        elif response.startswith('*ATREADY:'):
+            pass  # this is just an indication that the modem is ready, we can ignore it
+        elif response.startswith('+CGEV:'):
+            # Handle +CGEV unsolicited responses, e.g. network events
+            pass
+        elif response.startswith('+CMQTTCONNLOST:') or response.startswith('+CMQTTNONET:'):
+            # Handle MQTT connection lost events
+            print("MQTT connection lost, attempting to reconnect...")
+            self.connected = False
+            # You may want to implement reconnection logic here
+        elif response.startswith('+CPIN:'):
+            pass  # this is just an indication that the SIM card is ready, we can ignore it
+        elif response.startswith('+CME ERROR:'):
+            pass  # 
+        elif response.startswith('SMS DONE'):
+            pass  # this is just an indication that an SMS operation is done, we can ignore it
+        else:
+            print(f"Unhandled unsolicited response: {response}")
+            # You may want to implement additional handling for other unsolicited responses
 
     async def connect(self, apn="iot.1nce.net", clean_session=True, timeout=2, port='/dev/ttyAMA0', baudrate=115200):
         credentials = ''
@@ -185,7 +212,11 @@ class AsyncMQTTClient:
                 await self._send_at_command('CSSLCFG', f'="cacert",1,"{self.ca_cert}"')
                 await self._send_at_command('CSSLCFG', f'="enableSNI",1,{int(self.enable_SNI)}')
                 await self._send_at_command('CMQTTSSLCFG', f'=0,1')
-            if self.lw_topic:
+            if self.lw_topic and self.lw_msg:
+                assert 0 <= self.lw_qos <= 2
+                assert self.lw_retain == False, "retain=True is not supported by SimCOMM A76xx for last will"
+                assert 0 < len(self.lw_topic) <= 1024
+                assert 0 < len(self.lw_msg) <= 1024
                 await self._send_at_command('CMQTTWILLTOPIC', f'=0,{len(self.lw_topic)}', payload=self.lw_topic)
                 await self._send_at_command('CMQTTWILLMSG', f'=0,{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)
         except ValueError as e:
@@ -210,6 +241,8 @@ class AsyncMQTTClient:
             await self._send_at_command('CMQTTREL', f'=0')
             await self._send_at_command('CMQTTSTOP', result_handler=lambda s: int(s))
             await self._send_at_command('CGACT', f'=0,1')
+            assert self.writer is not None, "Writer is not initialized. Call connect() first."
+            # Close the serial connection
             self.writer.close()
             await self.writer.wait_closed()
             self.connected = False
@@ -281,11 +314,13 @@ async def test():
             await client.publish(topic2, payload2.encode("utf-8"), retain=True, qos=1)
             print("Publish done")
             start_time = asyncio.get_event_loop().time()
-            wait_interval = 15 * 60
+            wait_interval = 5 # 15 * 60
             while asyncio.get_event_loop().time() - start_time < wait_interval:
                 await asyncio.sleep(1)
                 # You may want to implement message checking here
     except KeyboardInterrupt:
+        pass
+    except asyncio.exceptions.CancelledError:
         pass
 
     await client.unsubscribe(topic1)
