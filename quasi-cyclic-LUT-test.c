@@ -1,26 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#if 0
-const unsigned short LUT[256] = {
-    0x0000, 0x0100, 0x0200, 0x0300, 0x0400, 0x0500, 0x0600, 0x0000, 0x0800, 0x0900, 0x0A00, 0x0000, 0x0C00, 0x4080, 0x0000, 0x0050,
-    0x1000, 0x1100, 0x1200, 0x4020, 0x1400, 0x2002, 0x0000, 0x0000, 0x1800, 0x0000, 0x8001, 0x0000, 0x0000, 0x0000, 0x00A0, 0x0000,
-    0x2000, 0x2100, 0x2200, 0x0000, 0x2400, 0x1002, 0x8040, 0x0084, 0x2800, 0x8010, 0x4004, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x3000, 0x0402, 0x0000, 0x0011, 0x0102, 0x0002, 0x0000, 0x0202, 0x0000, 0x0024, 0x0000, 0x0000, 0x0041, 0x0802, 0x0000, 0x0000,
-    0x4000, 0x4100, 0x4200, 0x1020, 0x4400, 0x0880, 0x0000, 0x0000, 0x4800, 0x0480, 0x2004, 0x0000, 0x0180, 0x0080, 0x0009, 0x0280,
-    0x5000, 0x0220, 0x0120, 0x0020, 0x8008, 0x0000, 0x0000, 0x0420, 0x0000, 0x0000, 0x0000, 0x0820, 0x0000, 0x1080, 0x0000, 0x0006,
-    0x6000, 0x0000, 0x0804, 0x0000, 0x0000, 0x0000, 0x0022, 0x0000, 0x0204, 0x0000, 0x0004, 0x0104, 0x0000, 0x2080, 0x0404, 0x0000,
-    0x0000, 0x0000, 0x0048, 0x2020, 0x0000, 0x4002, 0x0000, 0x0000, 0x0082, 0x0000, 0x1004, 0x0000, 0x0000, 0x0018, 0x0000, 0x0000,
-    0x8000, 0x8100, 0x8200, 0x0000, 0x8400, 0x0000, 0x2040, 0x0028, 0x8800, 0x2010, 0x1001, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x9000, 0x0000, 0x0801, 0x0042, 0x4008, 0x0000, 0x0000, 0x0000, 0x0201, 0x0088, 0x0001, 0x0101, 0x0012, 0x0000, 0x0401, 0x0000,
-    0xA000, 0x0810, 0x0440, 0x0000, 0x0240, 0x0000, 0x0040, 0x0140, 0x0110, 0x0010, 0x0000, 0x0210, 0x0000, 0x0410, 0x0840, 0x0003,
-    0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x8002, 0x1040, 0x0000, 0x0000, 0x1010, 0x2001, 0x0000, 0x0000, 0x0000, 0x000C, 0x0000,
-    0xC000, 0x0000, 0x0000, 0x0014, 0x1008, 0x0000, 0x0000, 0x0000, 0x0000, 0x0021, 0x0000, 0x0000, 0x0044, 0x8080, 0x0000, 0x0000,
-    0x0408, 0x0000, 0x0000, 0x8020, 0x0008, 0x0108, 0x0208, 0x0081, 0x0000, 0x0000, 0x4001, 0x0000, 0x0808, 0x0000, 0x0000, 0x0000,
-    0x0000, 0x000A, 0x0000, 0x0000, 0x0090, 0x0000, 0x4040, 0x0000, 0x0000, 0x4010, 0x8004, 0x00C0, 0x0000, 0x0000, 0x0000, 0x0000,
-    0x0005, 0x0000, 0x0000, 0x0000, 0x2008, 0x0060, 0x0000, 0x0000, 0x0000, 0x0000, 0x0030, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000
-};
-#else
 const uint8_t LUT[256] = {
     0x00, // Syndrome 0x00
     0x00, // Syndrome 0x01
@@ -279,30 +259,6 @@ const uint8_t LUT[256] = {
     0x00, // Syndrome 0xFE
     0x00, // Syndrome 0xFF
 };
-#endif
-
-const unsigned char parity_matrix[8] = {
-    0b01001101,
-    0b10100110,
-    0b01010011,
-    0b10101001,
-    0b11010100,
-    0b01101010,
-    0b00110101,
-    0b10011010
-};
-
-// H matrix as unsigned short[8], each row is 16 bits: [I | P^T]
-const unsigned short H[8] = {
-    0b1000000001011001, // 0x8059
-    0b0100000010101100, // 0x40AC
-    0b0010000001010110, // 0x2056
-    0b0001000000101011, // 0x102B
-    0b0000100010010101, // 0x0895
-    0b0000010011001010, // 0x04CA
-    0b0000001001100101, // 0x0265
-    0b0000000110110010  // 0x01B2
-};
 
 const uint8_t P[256] = {
 0x00, 0xB2, 0x65, 0xD7, 0xCA, 0x78, 0xAF, 0x1D, 0x95, 0x27, 0xF0, 0x42, 0x5F, 0xED, 0x3A, 0x88,
@@ -323,71 +279,38 @@ const uint8_t P[256] = {
 0x88, 0x3A, 0xED, 0x5F, 0x42, 0xF0, 0x27, 0x95, 0x1D, 0xAF, 0x78, 0xCA, 0xD7, 0x65, 0xB2, 0x00,
 };
 
-// data_byte: 8 bits (as unsigned char)
-// parity_matrix: 8 rows, each 8 bits (unsigned char[8])
+// data_byte: 8 bits (as uint8_t)
+// parity_matrix: 8 rows, each 8 bits (uint8_t[8])
 // Returns: 16-bit codeword (8 parity bits | 8 data bits)
-unsigned short encode(uint8_t data_byte) {
-    unsigned short codeword = 0;
-#if 0
-    // Compute parity bits (high 8 bits)
-    for (int i = 0; i < 8; ++i) {
-        uint8_t parity = 0;
-        for (int j = 0; j < 8; ++j) {
-            // Get j-th bit of data_byte
-            uint8_t data_bit = (data_byte >> (7 - j)) & 1;
-            uint8_t matrix_bit = (parity_matrix[i] >> (7 - j)) & 1;
-            parity ^= (data_bit & matrix_bit);
-        }
-        codeword |= (parity << (15 - i));
-    }
-    // Copy data bits (low 8 bits)
-    codeword |= (data_byte & 0xFF);
-#else
+uint16_t encode(uint8_t data_byte) {
+    uint16_t codeword = 0;
     codeword = (P[data_byte] << 8) | data_byte;
-#endif
     return codeword;
 }
 
-// H: const unsigned short H[8]
-// LUT: const unsigned short LUT[256]
-// codeword: 16 bits (unsigned short)
-// Returns: corrected data byte (unsigned char)
-unsigned char decode(unsigned short codeword) {
+// codeword: 16 bits (uint16_t)
+// Returns: corrected data byte (uint8_t)
+uint8_t decode(uint16_t codeword) {
     // Compute syndrome (8 bits)
-#if 0
-    uint8_t syndrome = 0;
-    for (int i = 0; i < 8; ++i) {
-        // Dot product of H[i] and codeword, mod 2
-        unsigned short row = H[i];
-        unsigned short x = codeword & row;
-        // Count number of 1s in x
-        int parity = 0;
-        while (x) {
-            parity ^= (x & 1);
-            x >>= 1;
-        }
-        syndrome = (syndrome << 1) | (parity & 1);
-    }
-#else
     uint8_t syndrome = P[codeword & 0xFF] ^ (codeword >> 8);
 
     // Look up error pattern in LUT
-    unsigned short error_pattern = LUT[syndrome];
+    uint16_t error_pattern = LUT[syndrome];
 //    printf("Syndrome: 0x%02X, Error Pattern: 0x%04X\n", syndrome, error_pattern);
 
     // Correct the codeword
-    unsigned short corrected = codeword ^ error_pattern;
-#endif
+    uint16_t corrected = codeword ^ error_pattern;
+
     // Return the lower 8 bits (data byte)
-    return (unsigned char)(corrected & 0xFF);
+    return (uint8_t)(corrected & 0xFF);
 }
 
 int success_count = 0;
 int failure_count = 0;
 
-void test(unsigned char data_byte, unsigned short flipped_bits) {
-    const unsigned short encoded = encode((uint8_t)data_byte);
-    const unsigned char decoded = decode(encoded ^ flipped_bits); // Introduce a single-bit error for testing
+void test(uint8_t data_byte, uint16_t flipped_bits) {
+    const uint16_t encoded = encode(data_byte);
+    const uint8_t decoded = decode(encoded ^ flipped_bits); // Introduce bit errors for testing
 
     if (decoded != data_byte) {
         printf("Failed: Data byte: 0x%02X, Encoded: 0x%04X, Decoded: 0x%02X\n", data_byte, encoded, decoded);
@@ -400,12 +323,16 @@ void test(unsigned char data_byte, unsigned short flipped_bits) {
 }
 int main() {
     // Example usage
-    for (uint16_t data_byte = 0; data_byte < 256; data_byte++) {
-        test((unsigned char)data_byte, 0);
+    printf("Testing Quasi-Cyclic LUT.\n");
+    for (uint16_t data_byte = 0; data_byte < 1; data_byte++) {
+        test((uint8_t)data_byte, 0);
+
         for (int i = 0; i < 16; i++) {
-            for (int j = i; j < 16; j++) {
+            // Test with each single bit flipped
+            test((uint8_t)data_byte, (1 << i));
+            for (int j = i+1; j < 16; j++) {
                 // Test with each bit flipped
-                test((unsigned char)data_byte, (1 << i) | (1 << j) );
+                test((uint8_t)data_byte, (1 << i) | (1 << j) );
             }
         }
 
