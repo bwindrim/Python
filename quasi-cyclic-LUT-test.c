@@ -283,8 +283,7 @@ const uint8_t P[256] = {
 // parity_matrix: 8 rows, each 8 bits (uint8_t[8])
 // Returns: 16-bit codeword (8 parity bits | 8 data bits)
 uint16_t encode(uint8_t data_byte) {
-    uint16_t codeword = 0;
-    codeword = (P[data_byte] << 8) | data_byte;
+    const uint16_t codeword = (P[data_byte] << 8) | data_byte;
     return codeword;
 }
 
@@ -292,14 +291,14 @@ uint16_t encode(uint8_t data_byte) {
 // Returns: corrected data byte (uint8_t)
 uint8_t decode(uint16_t codeword) {
     // Compute syndrome (8 bits)
-    uint8_t syndrome = P[codeword & 0xFF] ^ (codeword >> 8);
+    const uint8_t syndrome = P[codeword & 0xFF] ^ (codeword >> 8);
 
     // Look up error pattern in LUT
-    uint16_t error_pattern = LUT[syndrome];
+    const uint16_t error_pattern = LUT[syndrome];
 //    printf("Syndrome: 0x%02X, Error Pattern: 0x%04X\n", syndrome, error_pattern);
 
     // Correct the codeword
-    uint16_t corrected = codeword ^ error_pattern;
+    const uint16_t corrected = codeword ^ error_pattern;
 
     // Return the lower 8 bits (data byte)
     return (uint8_t)(corrected & 0xFF);
@@ -324,14 +323,17 @@ void test(uint8_t data_byte, uint16_t flipped_bits) {
 int main() {
     // Example usage
     printf("Testing Quasi-Cyclic LUT.\n");
-    for (uint16_t data_byte = 0; data_byte < 1; data_byte++) {
+    for (uint16_t data_byte = 0; data_byte < 256; data_byte++) {
         test((uint8_t)data_byte, 0);
 
         for (int i = 0; i < 16; i++) {
             // Test with each single bit flipped
             test((uint8_t)data_byte, (1 << i));
+        }
+
+        for (int i = 0; i < 15; i++) {
             for (int j = i+1; j < 16; j++) {
-                // Test with each bit flipped
+            // Test with each pair of bits flipped
                 test((uint8_t)data_byte, (1 << i) | (1 << j) );
             }
         }
