@@ -273,14 +273,14 @@ const unsigned char parity_matrix[8] = {
 
 // H matrix as unsigned short[8], each row is 16 bits: [I | P^T]
 const unsigned short H[8] = {
-    0b10000000_01011001, // 0x8059
-    0b01000000_10101100, // 0x40AC
-    0b00100000_01010110, // 0x2056
-    0b00010000_00101011, // 0x102B
-    0b00001000_10010101, // 0x0895
-    0b00000100_11001010, // 0x04CA
-    0b00000010_01100101, // 0x0265
-    0b00000001_10110010  // 0x01B2
+    0b1000000001011001, // 0x8059
+    0b0100000010101100, // 0x40AC
+    0b0010000001010110, // 0x2056
+    0b0001000000101011, // 0x102B
+    0b0000100010010101, // 0x0895
+    0b0000010011001010, // 0x04CA
+    0b0000001001100101, // 0x0265
+    0b0000000110110010  // 0x01B2
 };
 
 // data_byte: 8 bits (as unsigned char)
@@ -336,16 +336,12 @@ unsigned char decode(unsigned short codeword) {
 
 int main() {
     // Example usage
-    for (uint8_t data_byte = 0b10101010; data_byte < 256; data_byte++) {
-        unsigned short encoded = encode(data_byte);
-        printf("Data byte: 0x%02X, Encoded: 0x%04X\n", data_byte, encoded);
-        unsigned char decoded = decode(encoded);
-        printf("Decoded: 0x%02X\n", decoded);
+    for (uint16_t data_byte = 0; data_byte < 256; data_byte++) {
+        const unsigned short encoded = encode((uint8_t)data_byte);
+        const unsigned char decoded = decode(encoded);
 
-        if (decoded == data_byte) {
-            printf("Decoding successful!\n");
-        } else {
-            printf("Decoding failed!\n");
+        if (decoded != data_byte) {
+            printf("Decoding failed: Data byte: 0x%02X, Encoded: 0x%04X, Decoded: 0x%02X\n", data_byte, encoded, decoded);
         }
     }
 
