@@ -23,7 +23,7 @@ def extract_numeric_values(response):
 
 
 class MQTTClient:
-    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=60, ssl=False, ssl_params={}):
+    def __init__(self, client_id, server, port = 0, user=None, password=None, keepalive=20, ssl=False, ssl_params={}):
         """
         Initialize the MQTT client.
 
@@ -148,11 +148,13 @@ class MQTTClient:
                     if result is None:
                         # There was no result, so return -1 as a generic error.
                         return -1
-                    else:
+                    elif result_handler is not None:
                         # We have a result, so pass it to the result handler
-                        # ToDo: What if there is no result handler?
                         print("result =", result_handler(result.strip()))
                         return result_handler(result.strip())
+                    else:
+                        # No result handler, so return -1 as a generic error.
+                        return -1
                 else:
                     # There was an explicit OK from the modem, but we may still have a result
                     # still to come.
@@ -244,7 +246,12 @@ class MQTTClient:
             self._send_at_command('CSSLCFG', f'="enableSNI",{self.ssl_context},{int(self.enable_SNI)}') # Set Server Name Indication
             self._send_at_command('CMQTTSSLCFG', f'={self.client_index},{self.ssl_context}')       # Set SSL context for MQTT
 
-        if self.lw_topic:
+        if self.lw_topic and self.lw_msg:
+            assert 0 < len(self.lw_topic) <= 1024
+            assert 0 < len(self.lw_msg) <= 1024 # note: will message is limited to 1024 bytes
+            assert self.lw_retain == False, "retain=True is not supported by SimCOMM A76xx for last will"
+            assert 0 <= self.lw_qos <= 2
+            # Set last will message
             self._send_at_command('CMQTTWILLTOPIC', f'={self.client_index},{len(self.lw_topic)}', payload=self.lw_topic)  # Send topic
             self._send_at_command('CMQTTWILLMSG', f'={self.client_index},{len(self.lw_msg)},{self.lw_qos}', payload=self.lw_msg)  # Send payload
 
@@ -309,6 +316,7 @@ class MQTTClient:
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
         assert 0 < len(msg) <= 10240
+        # ToDo: provide error handler for topic and payload commands, below
         self._send_at_command('CMQTTTOPIC', f'={self.client_index},{len(topic)}', payload=topic)  # Send topic
         self._send_at_command('CMQTTPAYLOAD', f'={self.client_index},{len(msg)}', payload=msg)  # Send payload
         self._send_at_command('CMQTTPUB', f'={self.client_index},{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: int(s.split(b',')[1]))  # Publish the message
@@ -359,7 +367,12 @@ def upload_cert(client, filename):
 
 # Received messages from subscriptions will be delivered to this callback
 def sub_cb(topic, msg):
-    print(f'sub_cb({topic}, {msg})')
+    list = topic.decode().split('/')
+    if list[0] == 'BWtest':
+        if list[1] == 'topic':
+            print(f'sub_cb({list}, {msg})')
+    else:
+        print(f'sub_cb({topic}, {msg})')
 
 
 def download():
@@ -379,7 +392,7 @@ def test():
     ssl_params = {'ca_cert': 'isrgrootx1.pem', 'ssl_version': 3, 'auth_mode': 1, 'ignore_local_time': True, 'enable_SNI': True}
     client = MQTTClient("BWtestClient0", "8d5ec6984ed54a29ac7794546055635d.s1.eu.hivemq.cloud", port = 8883, user = "oisl_brian", password = "Oisl2023", ssl=True, ssl_params=ssl_params)
 
-    client.set_last_will(b"BWtest/lastwill", b"Goodbye, cruel world!", qos=1)
+    client.set_last_will(b"BWtest/lastwill", b"Pi Python connection broken", qos=1)
 
     # Connect to MQTT broker
     #client.connect(apn="mob.asm.net")
@@ -399,7 +412,7 @@ def test():
 
             # Publish and be damned
             client.publish(topic2, payload2.encode(encoding="utf-8"), retain=True, qos=1)
-
+            break
             start_time = time.time()
             wait_interval = 15*60  # 15 minutes
             while time.time() - start_time < wait_interval:
