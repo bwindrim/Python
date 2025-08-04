@@ -3,8 +3,8 @@ from itertools import combinations
 
 # Function to generate LUT (from the previous example)
 def generate_lut(parity_matrix):
-    n = 16 #parity_matrix.shape[1]  # Total number of bits (16)
-    k = 8 #n - parity_matrix.shape[0]  # Number of data bits (8)
+    n = 16 # number of codeword bits
+    k = 8  # number of dataword bits
     print(f'n = {n}, k = {k}')
 
     # Construct H matrix (transpose of parity matrix with identity block)
@@ -46,6 +46,19 @@ def print_lut_as_c_array(lut):
         print(f"    {{{syndrome_str}}}, {{{error_vector_str}}},")
     print("};")
 
+def print_lut_as_c_short_array(lut):
+    # Each syndrome is 8 bits, so 256 possible syndromes
+    print("unsigned short lut[256] = {")
+    for i in range(256):
+        syndrome = tuple(int(x) for x in np.binary_repr(i, width=8))
+        error_vector = lut.get(syndrome, np.zeros(16, dtype=int))
+        # Pack error_vector (16 bits) into an unsigned short
+        value = 0
+        for bit in error_vector:
+            value = (value << 1) | int(bit)
+        print(f"    0x{value:04X},")
+    print("};")
+
 # Parity matrix (P) from the paper
 P = np.array([
     [0, 1, 0, 0, 1, 1, 0, 1],
@@ -62,7 +75,7 @@ P = np.array([
 lut, H = generate_lut(P)
 
 # Print LUT as a C array
-print_lut_as_c_array(lut)
+print_lut_as_c_short_array(lut)
 
 # Function to encode data
 def encode(data_byte, parity_matrix):
