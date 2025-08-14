@@ -45,7 +45,10 @@ class AsyncMQTTClient:
         assert self.reader is not None, "Reader is not initialized. Call connect() first."
         # Read a line from the serial reader
         while True:
-            line = await self.reader.readline()
+            try:
+                line = await asyncio.wait_for(self.reader.readline(), timeout=10)
+            except asyncio.TimeoutError:
+                raise TimeoutError("Timed out waiting for line from serial reader")
             if not line:  # EOF
                 raise EOFError("Serial connection closed while reading response")
             result = line.decode(errors="ignore").strip()
@@ -95,9 +98,13 @@ class AsyncMQTTClient:
                 print(f'Unexpected response: {line}')
 
         # If payload is needed, wait for '>' prompt
-        if payload:
+        if payload is not None:
+            # Ensure payload is bytes
             # Read until the '>' prompt is seen
-            prompt = await self.reader.readuntil(b'>')
+            try:
+                prompt = await asyncio.wait_for(self.reader.readuntil(b'>'), timeout=5)
+            except asyncio.TimeoutError:
+                raise TimeoutError("Timed out waiting for '>' prompt from modem")
             if not prompt.endswith(b'>'):
                 raise EOFError("Serial connection closed or prompt not found while waiting for '>' prompt")
             self.writer.write(payload) # now send the payload
@@ -176,9 +183,16 @@ class AsyncMQTTClient:
         elif response.startswith('+CGEV:'):
             # Handle +CGEV unsolicited responses, e.g. network events
             pass
-        elif response.startswith('+CMQTTCONNLOST:') or response.startswith('+CMQTTNONET:'):
+        elif response.startswith('+CMQTTCONNLOST:'):
             # Handle MQTT connection lost events
-            print("MQTT connection lost, attempting to reconnect...")
+            client_index, cause = extract_numeric_values(response)
+            assert client_index == self.client_index, "Unexpected client index in MQTT connection lost event"
+            print(f'MQTT connection lost, cause: {cause}')
+            self.connected = False
+            # You may want to implement reconnection logic here
+        elif response.startswith('+CMQTTNONET:'):
+            # Handle MQTT network lost events
+            print("MQTT no network")
             self.connected = False
             # You may want to implement reconnection logic here
         elif response.startswith('+CPIN:'):
@@ -203,7 +217,7 @@ class AsyncMQTTClient:
         await self._send_at_command('CGDCONT', f'=1,"IP","{apn}"')
         await self._send_at_command('CGACT', f'=1,1')
         try:
-            await self._send_at_command('CMQTTSTART', result_handler=lambda s: int(extract_numeric_values(s)[0]))
+            await self._send_at_command('CMQTTSTART', result_handler=lambda s: extract_numeric_values(s)[0])
             await self._send_at_command('CMQTTACCQ', f'={self.client_index},"{self.client_id}",{int(self.use_ssl)}')
             if self.use_ssl:
                 await self._send_at_command('CSSLCFG', f'="sslversion",1,{self.ssl_version}')
@@ -226,7 +240,7 @@ class AsyncMQTTClient:
                 raise e
         try:
             await self._send_at_command('CMQTTCONNECT', f'=0,"tcp://{self.server_url}:{self.port}",{self.keepalive},{int(clean_session)}{credentials}',
-                                    result_handler=lambda s: int(extract_numeric_values(s)[1]))
+                                    result_handler=lambda s: extract_numeric_values(s)[1])
         except ValueError as e:
             # An error code of 19 from CMQTTCONNECT means "Already connected", so we can ignore it
             # ToDo: we should really disconnect and reconnect.
@@ -237,9 +251,9 @@ class AsyncMQTTClient:
 
     async def disconnect(self):
         if self.connected:
-            await self._send_at_command('CMQTTDISC', f'=0', result_handler=lambda s: int(extract_numeric_values(s)[1]))
+            await self._send_at_command('CMQTTDISC', f'=0', result_handler=lambda s: extract_numeric_values(s)[1])
             await self._send_at_command('CMQTTREL', f'=0')
-            await self._send_at_command('CMQTTSTOP', result_handler=lambda s: int(s))
+            await self._send_at_command('CMQTTSTOP', result_handler=lambda s: extract_numeric_values(s)[0])
             await self._send_at_command('CGACT', f'=0,1')
             assert self.writer is not None, "Writer is not initialized. Call connect() first."
             # Close the serial connection
@@ -267,17 +281,17 @@ class AsyncMQTTClient:
         assert 0 < len(msg) <= 10240
         await self._send_at_command('CMQTTTOPIC', f'=0,{len(topic)}', payload=topic)
         await self._send_at_command('CMQTTPAYLOAD', f'=0,{len(msg)}', payload=msg)
-        await self._send_at_command('CMQTTPUB', f'=0,{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: int(extract_numeric_values(s)[1]))
+        await self._send_at_command('CMQTTPUB', f'=0,{qos},{pub_timeout},{int(retain)}', result_handler=lambda s: extract_numeric_values(s)[1])
 
     async def subscribe(self, topic, qos=0):
         assert self.cb is not None
         assert 0 <= qos <= 2
         assert 0 < len(topic) <= 1024
-        await self._send_at_command('CMQTTSUB', f'=0,{len(topic)},{qos}', payload=topic, result_handler=lambda s: int(extract_numeric_values(s)[1]))
+        await self._send_at_command('CMQTTSUB', f'=0,{len(topic)},{qos}', payload=topic, result_handler=lambda s: extract_numeric_values(s)[1])
 
     async def unsubscribe(self, topic):
         assert 0 < len(topic) <= 1024
-        await self._send_at_command('CMQTTUNSUB', f'=0,{len(topic)},1', payload=topic, result_handler=lambda s: int(extract_numeric_values(s)[1]))
+        await self._send_at_command('CMQTTUNSUB', f'=0,{len(topic)},1', payload=topic, result_handler=lambda s: extract_numeric_values(s)[1])
 
     async def check_msg(self):
         # Non-blocking check for messages
